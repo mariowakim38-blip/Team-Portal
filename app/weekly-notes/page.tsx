@@ -5,6 +5,8 @@ import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
 import type { Athlete, Coach, WeeklyNote, Profile } from '@/lib/types'
 
+const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+
 export default function WeeklyNotes() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [coachId, setCoachId] = useState<string | null>(null)
@@ -17,10 +19,18 @@ export default function WeeklyNotes() {
     load()
   }, [])
 
+  async function getAssignedTeamIds(currentCoachId: string) {
+    const { data } = await supabase
+      .from('coach_teams')
+      .select('team_id')
+      .eq('coach_id', currentCoachId)
+
+    return (data || []).map((x: any) => x.team_id)
+  }
+
   async function load() {
     const { data: userData } = await supabase.auth.getUser()
     const user = userData.user
-
     if (!user) return
 
     const { data: p } = await supabase
@@ -32,6 +42,7 @@ export default function WeeklyNotes() {
     setProfile(p)
 
     let currentCoachId: string | null = null
+    let teamIds: string[] = []
 
     if (p?.role === 'coach') {
       const { data: coach } = await supabase
@@ -42,24 +53,28 @@ export default function WeeklyNotes() {
 
       currentCoachId = coach?.id || null
       setCoachId(currentCoachId)
+
+      if (currentCoachId) {
+        teamIds = await getAssignedTeamIds(currentCoachId)
+      }
     }
 
-    const athletesQuery = supabase
+    let athletesQuery = supabase
       .from('athletes')
-      .select('*')
+      .select('*,teams(name),levels(name),coaches(full_name)')
       .order('first_name')
 
-    if (p?.role === 'coach' && currentCoachId) {
-      athletesQuery.eq('coach_id', currentCoachId)
+    if (p?.role === 'coach') {
+      athletesQuery = athletesQuery.in('team_id', teamIds.length ? teamIds : [EMPTY_UUID])
     }
 
-    const notesQuery = supabase
+    let notesQuery = supabase
       .from('weekly_notes')
-      .select('*,athletes(first_name,last_name),coaches(full_name)')
+      .select('*,athletes(first_name,last_name,team_id),coaches(full_name)')
       .order('week_start_date', { ascending: false })
 
-    if (p?.role === 'coach' && currentCoachId) {
-      notesQuery.eq('coach_id', currentCoachId)
+    if (p?.role === 'coach') {
+      notesQuery = notesQuery.in('athletes.team_id', teamIds.length ? teamIds : [EMPTY_UUID])
     }
 
     const [{ data: a }, { data: c }, { data: n }] = await Promise.all([
@@ -87,29 +102,25 @@ export default function WeeklyNotes() {
 
     await supabase.from('weekly_notes').insert(payload)
 
-    setForm(profile?.role === 'coach' ? { effort: 'Good', coach_id: coachId } : { effort: 'Good' })
+    setForm(
+      profile?.role === 'coach'
+        ? { effort: 'Good', coach_id: coachId }
+        : { effort: 'Good' }
+    )
+
     load()
   }
 
   async function del(id: string) {
     if (!confirm('Delete note?')) return
-
-    let query = supabase.from('weekly_notes').delete().eq('id', id)
-
-    if (profile?.role === 'coach' && coachId) {
-      query = query.eq('coach_id', coachId)
-    }
-
-    await query
+    await supabase.from('weekly_notes').delete().eq('id', id)
     load()
   }
 
   return (
     <AppShell>
       <h1 className="title">Weekly Notes</h1>
-      <p className="muted">
-        Coach note, effort, attendance, correction and next focus.
-      </p>
+      <p className="muted">Coach note, effort, attendance, correction and next focus.</p>
 
       <div className="card mb">
         <form onSubmit={add} className="form-grid">
@@ -123,7 +134,7 @@ export default function WeeklyNotes() {
               <option value="">Choose</option>
               {athletes.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.first_name} {a.last_name}
+                  {a.first_name} {a.last_name} {a.teams?.name ? `- ${a.teams.name}` : ''}
                 </option>
               ))}
             </select>
@@ -138,9 +149,7 @@ export default function WeeklyNotes() {
               >
                 <option value="">Choose</option>
                 {coaches.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.full_name}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.full_name}</option>
                 ))}
               </select>
             </label>
@@ -179,34 +188,22 @@ export default function WeeklyNotes() {
 
           <label>
             Best improvement
-            <textarea
-              value={form.improvement || ''}
-              onChange={(e) => setForm({ ...form, improvement: e.target.value })}
-            />
+            <textarea value={form.improvement || ''} onChange={(e) => setForm({ ...form, improvement: e.target.value })} />
           </label>
 
           <label>
             Main correction
-            <textarea
-              value={form.correction || ''}
-              onChange={(e) => setForm({ ...form, correction: e.target.value })}
-            />
+            <textarea value={form.correction || ''} onChange={(e) => setForm({ ...form, correction: e.target.value })} />
           </label>
 
           <label>
             Next week focus
-            <textarea
-              value={form.next_focus || ''}
-              onChange={(e) => setForm({ ...form, next_focus: e.target.value })}
-            />
+            <textarea value={form.next_focus || ''} onChange={(e) => setForm({ ...form, next_focus: e.target.value })} />
           </label>
 
           <label style={{ gridColumn: '1/-1' }}>
             Coach note
-            <textarea
-              value={form.note || ''}
-              onChange={(e) => setForm({ ...form, note: e.target.value })}
-            />
+            <textarea value={form.note || ''} onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </label>
 
           <button className="btn">Save Weekly Note</button>
@@ -228,16 +225,12 @@ export default function WeeklyNotes() {
           {notes.map((n) => (
             <tr key={n.id}>
               <td>{n.week_start_date}</td>
-              <td>
-                {n.athletes?.first_name} {n.athletes?.last_name}
-              </td>
+              <td>{n.athletes?.first_name} {n.athletes?.last_name}</td>
               <td>{n.coaches?.full_name || '-'}</td>
               <td>{n.effort || '-'}</td>
               <td>{n.next_focus || '-'}</td>
               <td>
-                <button className="btn danger" onClick={() => del(n.id)}>
-                  Delete
-                </button>
+                <button className="btn danger" onClick={() => del(n.id)}>Delete</button>
               </td>
             </tr>
           ))}
