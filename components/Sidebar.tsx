@@ -27,7 +27,12 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-logo">G</div>
+        <img
+          src="/logo.jpeg"
+          alt="Gymnest Logo"
+          className="sidebar-logo"
+        />
+
         <div>
           <strong>Gymnest</strong>
           <span>Team Portal</span>
@@ -36,12 +41,19 @@ export default function Sidebar() {
 
       <nav className="nav">
         {links.map(([href, label]) => (
-          <Link key={href} href={href} className={pathname === href ? 'active' : ''}>
+          <Link
+            key={href}
+            href={href}
+            className={pathname === href ? 'active' : ''}
+          >
             {label}
           </Link>
         ))}
 
-        <button className="btn secondary mt" onClick={logout}>
+        <button
+          className="btn secondary mt"
+          onClick={logout}
+        >
           Logout
         </button>
       </nav>
