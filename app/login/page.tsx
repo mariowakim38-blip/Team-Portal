@@ -19,19 +19,32 @@ export default function Login() {
     const cleanUsername = username.trim().toLowerCase()
     const email = `${cleanUsername}@gymnest.local`
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
-    setLoading(false)
-
-    if (error) {
+    if (error || !data.user) {
+      setLoading(false)
       setError('Wrong username or password')
       return
     }
 
-    router.push('/dashboard')
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .single()
+
+    setLoading(false)
+
+    if (profile?.role === 'admin') {
+      router.push('/dashboard')
+    } else if (profile?.role === 'coach') {
+      router.push('/weekly-notes')
+    } else {
+      setError('No role assigned to this user')
+    }
   }
 
   return (
