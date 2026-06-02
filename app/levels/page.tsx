@@ -5,6 +5,8 @@ import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
 import type { Level, Skill, Athlete, Profile } from '@/lib/types'
 
+const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+
 const statuses = [
   ['not_started', 'Not started'],
   ['learning', 'Learning'],
@@ -15,7 +17,6 @@ const statuses = [
 
 export default function Levels() {
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [coachId, setCoachId] = useState<string | null>(null)
   const [levels, setLevels] = useState<Level[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
   const [athletes, setAthletes] = useState<Athlete[]>([])
@@ -32,10 +33,18 @@ export default function Levels() {
     loadAthleteSkills()
   }, [selectedAthlete])
 
+  async function getAssignedTeamIds(coachId: string) {
+    const { data } = await supabase
+      .from('coach_teams')
+      .select('team_id')
+      .eq('coach_id', coachId)
+
+    return (data || []).map((x: any) => x.team_id)
+  }
+
   async function load() {
     const { data: userData } = await supabase.auth.getUser()
     const user = userData.user
-
     if (!user) return
 
     const { data: p } = await supabase
@@ -46,7 +55,7 @@ export default function Levels() {
 
     setProfile(p)
 
-    let currentCoachId: string | null = null
+    let teamIds: string[] = []
 
     if (p?.role === 'coach') {
       const { data: coach } = await supabase
@@ -55,17 +64,18 @@ export default function Levels() {
         .eq('profile_id', user.id)
         .single()
 
-      currentCoachId = coach?.id || null
-      setCoachId(currentCoachId)
+      if (coach?.id) {
+        teamIds = await getAssignedTeamIds(coach.id)
+      }
     }
 
-    const athletesQuery = supabase
+    let athletesQuery = supabase
       .from('athletes')
-      .select('*')
+      .select('*,teams(name),levels(name),coaches(full_name)')
       .order('first_name')
 
-    if (p?.role === 'coach' && currentCoachId) {
-      athletesQuery.eq('coach_id', currentCoachId)
+    if (p?.role === 'coach') {
+      athletesQuery = athletesQuery.in('team_id', teamIds.length ? teamIds : [EMPTY_UUID])
     }
 
     const [{ data: l }, { data: s }, { data: a }] = await Promise.all([
@@ -153,9 +163,7 @@ export default function Levels() {
                 Description
                 <textarea
                   value={levelForm.description || ''}
-                  onChange={(e) =>
-                    setLevelForm({ ...levelForm, description: e.target.value })
-                  }
+                  onChange={(e) => setLevelForm({ ...levelForm, description: e.target.value })}
                 />
               </label>
 
@@ -175,9 +183,7 @@ export default function Levels() {
                 >
                   <option value="">Choose</option>
                   {levels.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
+                    <option key={l.id} value={l.id}>{l.name}</option>
                   ))}
                 </select>
               </label>
@@ -188,11 +194,9 @@ export default function Levels() {
                   value={skillForm.apparatus || 'Floor'}
                   onChange={(e) => setSkillForm({ ...skillForm, apparatus: e.target.value })}
                 >
-                  {['Floor', 'Beam', 'Bars', 'Vault', 'Conditioning', 'Flexibility'].map(
-                    (x) => (
-                      <option key={x}>{x}</option>
-                    )
-                  )}
+                  {['Floor', 'Beam', 'Bars', 'Vault', 'Conditioning', 'Flexibility'].map((x) => (
+                    <option key={x}>{x}</option>
+                  ))}
                 </select>
               </label>
 
@@ -210,9 +214,7 @@ export default function Levels() {
                 <input
                   type="number"
                   value={skillForm.order_number || ''}
-                  onChange={(e) =>
-                    setSkillForm({ ...skillForm, order_number: Number(e.target.value) })
-                  }
+                  onChange={(e) => setSkillForm({ ...skillForm, order_number: Number(e.target.value) })}
                 />
               </label>
 
@@ -225,14 +227,11 @@ export default function Levels() {
       <div className="card mb">
         <label>
           Update skills for athlete
-          <select
-            value={selectedAthlete}
-            onChange={(e) => setSelectedAthlete(e.target.value)}
-          >
+          <select value={selectedAthlete} onChange={(e) => setSelectedAthlete(e.target.value)}>
             <option value="">Choose athlete</option>
             {athletes.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.first_name} {a.last_name}
+                {a.first_name} {a.last_name} {a.teams?.name ? `- ${a.teams.name}` : ''}
               </option>
             ))}
           </select>
@@ -253,9 +252,7 @@ export default function Levels() {
           {skills.map((s) => (
             <tr key={s.id}>
               <td>{levels.find((l) => l.id === s.level_id)?.name || '-'}</td>
-              <td>
-                <span className="badge">{s.apparatus}</span>
-              </td>
+              <td><span className="badge">{s.apparatus}</span></td>
               <td>{s.skill_name}</td>
               <td>
                 <select
@@ -263,9 +260,7 @@ export default function Levels() {
                   onChange={(e) => updateSkill(s.id, e.target.value)}
                 >
                   {statuses.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
+                    <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
               </td>
