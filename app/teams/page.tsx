@@ -1,7 +1,68 @@
 'use client'
+
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
+import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
 import type { Team } from '@/lib/types'
-export default function Teams(){const[items,setItems]=useState<Team[]>([]);const[form,setForm]=useState<any>({});useEffect(()=>{load()},[]);async function load(){const{data}=await supabase.from('teams').select('*').order('name');setItems(data||[])}async function add(e:React.FormEvent){e.preventDefault();await supabase.from('teams').insert(form);setForm({});load()}async function del(id:string){if(confirm('Delete team?')){await supabase.from('teams').delete().eq('id',id);load()}}
-return <AppShell><h1 className="title">Teams</h1><div className="card mb"><form onSubmit={add} className="form-grid"><label>Team name<input required placeholder="Level 1 - Ages 7-9" value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Age group<input placeholder="7-9" value={form.age_group||''} onChange={e=>setForm({...form,age_group:e.target.value})}/></label><label>Level name<input placeholder="Level 1" value={form.level_name||''} onChange={e=>setForm({...form,level_name:e.target.value})}/></label><button className="btn">Add Team</button></form></div><table><thead><tr><th>Name</th><th>Age Group</th><th>Level</th><th></th></tr></thead><tbody>{items.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.age_group||'-'}</td><td>{x.level_name||'-'}</td><td><button className="btn danger" onClick={()=>del(x.id)}>Delete</button></td></tr>)}</tbody></table></AppShell>}
+
+export default function Teams() {
+  const router = useRouter()
+  const [role, setRole] = useState('coach')
+  const [teams, setTeams] = useState<Team[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [form, setForm] = useState<any>({})
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    const { user, profile, teamIds } = await getCurrentUserProfile()
+    if (!user) return router.push('/login')
+
+    setRole(profile?.role || 'coach')
+    const safeTeamIds = teamIds.length ? teamIds : [EMPTY_UUID]
+
+    let teamsQuery = supabase.from('teams').select('*').order('name')
+    if (profile?.role === 'coach') teamsQuery = teamsQuery.in('id', safeTeamIds)
+
+    const [{ data: t }, { data: athletes }] = await Promise.all([teamsQuery, supabase.from('athletes').select('id,team_id')])
+    setTeams(t || [])
+
+    const map: Record<string, number> = {}
+    ;(athletes || []).forEach((a: any) => { if (a.team_id) map[a.team_id] = (map[a.team_id] || 0) + 1 })
+    setCounts(map)
+  }
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    if (role !== 'admin') return alert('Only admin can create teams.')
+    await supabase.from('teams').insert(form)
+    setForm({})
+    load()
+  }
+
+  async function del(id: string) {
+    if (role !== 'admin') return alert('Only admin can delete teams.')
+    if (!confirm('Delete team?')) return
+    await supabase.from('teams').delete().eq('id', id)
+    load()
+  }
+
+  return (
+    <AppShell>
+      <h1 className="title">{role === 'admin' ? 'Teams' : 'My Teams'}</h1>
+      <p className="muted">{role === 'admin' ? 'Create competition teams and assign athletes to teams.' : 'Only teams assigned to your coach account are shown.'}</p>
+
+      {role === 'admin' && <div className="card mb"><h2>Add Team</h2><form onSubmit={add} className="form-grid">
+        <label>Team name<input required placeholder="Mini Team 6-7" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+        <label>Age group<input placeholder="6-7" value={form.age_group || ''} onChange={(e) => setForm({ ...form, age_group: e.target.value })} /></label>
+        <label>Level name<input placeholder="Level 1" value={form.level_name || ''} onChange={(e) => setForm({ ...form, level_name: e.target.value })} /></label>
+        <button className="btn">Add Team</button>
+      </form></div>}
+
+      <table><thead><tr><th>Team</th><th>Age Group</th><th>Level</th><th>Athletes</th>{role === 'admin' && <th></th>}</tr></thead>
+      <tbody>{teams.map((t) => <tr key={t.id}><td>{t.name}</td><td>{t.age_group || '-'}</td><td>{t.level_name || '-'}</td><td>{counts[t.id] || 0}</td>{role === 'admin' && <td><button className="btn danger" onClick={() => del(t.id)}>Delete</button></td>}</tr>)}</tbody></table>
+    </AppShell>
+  )
+}
