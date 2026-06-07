@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
-import type { Athlete, Profile } from '@/lib/types'
+import type { Athlete, Profile, Team } from '@/lib/types'
 
 const statuses = [
   ['not_achieved', '✕ Not Achieved'],
@@ -13,40 +13,37 @@ const statuses = [
   ['achieved', '✓ Achieved'],
 ]
 
-const apparatusOrder = [
-  'Vault',
-  'Bars',
-  'Beam',
-  'Floor',
-  'Physical Preparation',
-]
+const apparatusOrder = ['Vault', 'Bars', 'Beam', 'Floor', 'Physical Preparation']
 
 export default function Levels() {
   const router = useRouter()
 
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [teams, setTeams] = useState<Team[]>([])
   const [athletes, setAthletes] = useState<Athlete[]>([])
+  const [selectedTeamId, setSelectedTeamId] = useState('')
   const [selectedAthleteId, setSelectedAthleteId] = useState('')
   const [selectedAthlete, setSelectedAthlete] = useState<any | null>(null)
   const [elements, setElements] = useState<any[]>([])
   const [progress, setProgress] = useState<Record<string, any>>({})
-  const [saving, setSaving] = useState<string>('')
+  const [saving, setSaving] = useState('')
 
   useEffect(() => {
-    loadAthletes()
+    loadData()
   }, [])
 
   useEffect(() => {
-    if (selectedAthleteId) {
-      loadAthleteRoutine(selectedAthleteId)
-    } else {
-      setSelectedAthlete(null)
-      setElements([])
-      setProgress({})
-    }
+    setSelectedAthleteId('')
+    setSelectedAthlete(null)
+    setElements([])
+    setProgress({})
+  }, [selectedTeamId])
+
+  useEffect(() => {
+    if (selectedAthleteId) loadAthleteRoutine(selectedAthleteId)
   }, [selectedAthleteId])
 
-  async function loadAthletes() {
+  async function loadData() {
     const { user, profile: p, teamIds } = await getCurrentUserProfile()
 
     if (!user) {
@@ -57,6 +54,8 @@ export default function Levels() {
     setProfile(p)
 
     const safeTeamIds = teamIds.length ? teamIds : [EMPTY_UUID]
+
+    let teamsQuery = supabase.from('teams').select('*').order('name')
 
     let athletesQuery = supabase
       .from('athletes')
@@ -70,12 +69,23 @@ export default function Levels() {
       .order('first_name')
 
     if (p?.role === 'coach') {
+      teamsQuery = teamsQuery.in('id', safeTeamIds)
       athletesQuery = athletesQuery.in('team_id', safeTeamIds)
     }
 
-    const { data } = await athletesQuery
-    setAthletes(data || [])
+    const [{ data: t }, { data: a }] = await Promise.all([
+      teamsQuery,
+      athletesQuery,
+    ])
+
+    setTeams(t || [])
+    setAthletes(a || [])
   }
+
+  const teamAthletes = useMemo(() => {
+    if (!selectedTeamId) return []
+    return athletes.filter((a) => a.team_id === selectedTeamId)
+  }, [athletes, selectedTeamId])
 
   async function loadAthleteRoutine(athleteId: string) {
     const athlete = athletes.find((a: any) => a.id === athleteId)
@@ -146,9 +156,7 @@ export default function Levels() {
 
   function apparatusReadiness(items: any[]) {
     if (!items.length) return 0
-
     const achieved = items.filter((el) => progress[el.id]?.status === 'achieved').length
-
     return Math.round((achieved / items.length) * 100)
   }
 
@@ -176,16 +184,13 @@ export default function Levels() {
     setSaving(elementId)
 
     const { data: userData } = await supabase.auth.getUser()
-    const user = userData.user
 
     await supabase.from('athlete_element_progress').upsert(
       {
         ...updated,
-        updated_by: user?.id || null,
+        updated_by: userData.user?.id || null,
       },
-      {
-        onConflict: 'athlete_id,element_id',
-      }
+      { onConflict: 'athlete_id,element_id' }
     )
 
     setSaving('')
@@ -197,29 +202,52 @@ export default function Levels() {
         <div>
           <h1 className="title">Levels & Skills</h1>
           <p className="muted">
-            Select an athlete. The assigned level automatically loads the correct routine elements.
+            Choose team first, then choose athlete. The athlete level loads the correct routine automatically.
           </p>
         </div>
       </div>
 
       <div className="card mb">
-        <label>
-          Athlete
-          <select
-            value={selectedAthleteId}
-            onChange={(e) => setSelectedAthleteId(e.target.value)}
-          >
-            <option value="">Choose athlete</option>
-            {athletes.map((a: any) => (
-              <option key={a.id} value={a.id}>
-                {a.first_name} {a.last_name}
-                {a.teams?.name ? ` - ${a.teams.name}` : ''}
-                {a.program_levels?.name ? ` - ${a.program_levels.name}` : ''}
+        <div className="form-grid">
+          <label>
+            Team
+            <select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)}>
+              <option value="">Choose team</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Athlete
+            <select
+              value={selectedAthleteId}
+              onChange={(e) => setSelectedAthleteId(e.target.value)}
+              disabled={!selectedTeamId}
+            >
+              <option value="">
+                {selectedTeamId ? 'Choose athlete' : 'Choose team first'}
               </option>
-            ))}
-          </select>
-        </label>
+              {teamAthletes.map((a: any) => (
+                <option key={a.id} value={a.id}>
+                  {a.first_name} {a.last_name}
+                  {a.program_levels?.name ? ` - ${a.program_levels.name}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
+
+      {selectedTeamId && teamAthletes.length === 0 && (
+        <div className="card">
+          <h2>No athletes in this team</h2>
+          <p className="muted">Assign athletes to this team from the admin Athletes page.</p>
+        </div>
+      )}
 
       {selectedAthlete && (
         <div className="card mb">
@@ -232,10 +260,7 @@ export default function Levels() {
                 {selectedAthlete.teams?.name || 'No team'}
               </p>
             </div>
-
-            <span className="badge">
-              Coach: {selectedAthlete.coaches?.full_name || '-'}
-            </span>
+            <span className="badge">Coach: {selectedAthlete.coaches?.full_name || '-'}</span>
           </div>
         </div>
       )}
@@ -243,18 +268,14 @@ export default function Levels() {
       {selectedAthlete && !selectedAthlete.program_level_id && (
         <div className="card">
           <h2>No level assigned</h2>
-          <p className="muted">
-            Assign a program and level from the Athletes page first.
-          </p>
+          <p className="muted">Assign program and level from the admin Athletes page.</p>
         </div>
       )}
 
       {selectedAthlete && selectedAthlete.program_level_id && elements.length === 0 && (
         <div className="card">
           <h2>No routine elements found</h2>
-          <p className="muted">
-            This level has no imported elements yet.
-          </p>
+          <p className="muted">Import routine elements for this level first.</p>
         </div>
       )}
 
@@ -270,10 +291,7 @@ export default function Levels() {
                     <h2>{apparatus}</h2>
                     <p className="muted">{items.length} elements</p>
                   </div>
-
-                  <span className="status-pill status-ready">
-                    {readiness}% readiness
-                  </span>
+                  <span className="status-pill status-ready">{readiness}% readiness</span>
                 </div>
 
                 <div className="element-list">
@@ -290,7 +308,6 @@ export default function Levels() {
                             </span>
                             <strong>{el.element_name}</strong>
                           </div>
-
                           {saving === el.id && <span className="muted">Saving...</span>}
                         </div>
 
@@ -302,9 +319,7 @@ export default function Levels() {
                               onChange={(e) => updateProgress(el.id, 'status', e.target.value)}
                             >
                               {statuses.map(([value, label]) => (
-                                <option key={value} value={value}>
-                                  {label}
-                                </option>
+                                <option key={value} value={value}>{label}</option>
                               ))}
                             </select>
                           </label>
@@ -314,7 +329,6 @@ export default function Levels() {
                             <input
                               value={itemProgress.main_issue || ''}
                               onChange={(e) => updateProgress(el.id, 'main_issue', e.target.value)}
-                              placeholder="Bent knees, weak push, low amplitude..."
                             />
                           </label>
 
@@ -323,7 +337,6 @@ export default function Levels() {
                             <input
                               value={itemProgress.correction_focus || ''}
                               onChange={(e) => updateProgress(el.id, 'correction_focus', e.target.value)}
-                              placeholder="Straight legs, hollow body, shoulder push..."
                             />
                           </label>
 
@@ -332,7 +345,6 @@ export default function Levels() {
                             <input
                               value={itemProgress.coach_note || ''}
                               onChange={(e) => updateProgress(el.id, 'coach_note', e.target.value)}
-                              placeholder="Short coach note"
                             />
                           </label>
                         </div>
