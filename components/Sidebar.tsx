@@ -25,14 +25,6 @@ const coachLinks = [
   ['/reports', 'Reports'],
 ]
 
-function brandName() {
-  return (
-    <strong>
-      GYM<span>TRACK</span>
-    </strong>
-  )
-}
-
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -65,12 +57,8 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <img src="/gymtrack-logo.png" alt="GymTrack Logo" className="sidebar-logo" />
-        <div>
-          {brandName()}
-          <span>{role === 'admin' ? 'Admin Portal' : 'Coach Portal'}</span>
-        </div>
+      <div className="brand brand-logo-only">
+        <img src="/gymtrack-logo.png" alt="GymTrack" className="sidebar-logo sidebar-wordmark" />
       </div>
 
       <nav className="nav">
