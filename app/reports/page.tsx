@@ -477,7 +477,39 @@ export default function Reports() {
     }
 
     addFooter()
-    doc.save(`GymTrack_Report_${athleteName.replace(/[^a-z0-9]+/gi, '_')}.pdf`)
+
+    const fileName = `GymTrack_Report_${athleteName.replace(/[^a-z0-9]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
+    const pdfBlob = doc.output('blob')
+
+    try {
+      const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' })
+      const mobileNavigator = navigator as Navigator & {
+        canShare?: (data: { files?: File[] }) => boolean
+        share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>
+      }
+
+      if (mobileNavigator.share && mobileNavigator.canShare?.({ files: [pdfFile] })) {
+        await mobileNavigator.share({
+          files: [pdfFile],
+          title: 'GymTrack Athlete Report',
+          text: `${athleteName} - GymTrack progress report`,
+        })
+        return
+      }
+    } catch {
+      // If mobile file sharing is unavailable or cancelled, continue to normal download.
+    }
+
+    const url = URL.createObjectURL(pdfBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    setTimeout(() => URL.revokeObjectURL(url), 1500)
   }
 
   return (
@@ -614,7 +646,7 @@ export default function Reports() {
 
               <div className="modal-actions">
                 <button className="btn" onClick={exportPDF} disabled={loadingDetails || details.length === 0}>
-                  Export PDF
+                  Download / Share PDF
                 </button>
                 <button className="btn secondary" onClick={() => setSelected(null)}>
                   Close
