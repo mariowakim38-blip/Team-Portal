@@ -171,167 +171,239 @@ export default function Reports() {
     setLoadingDetails(false)
   }
 
-  function exportPDF() {
+  async function exportPDF() {
     if (!selected) return
 
-    const grouped = groupByApparatus(details)
-    const logoUrl = `${window.location.origin}/gymtrack-logo.png`
-    const date = new Date().toLocaleDateString()
-    const athleteName = selected.athlete_name
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const margin = 34
+    const contentWidth = pageWidth - margin * 2
+    let y = margin
+
+    const athleteName = selected.athlete_name || 'Athlete'
     const team = selectedAthlete?.teams?.name || selected.team_name || '-'
     const coach = selectedAthlete?.coaches?.full_name || selected.coach_name || '-'
     const program = selectedAthlete?.programs?.name || selected.program_name || '-'
     const level = selectedAthlete?.program_levels?.name || selected.level_name || '-'
     const notesForAthlete = getAthleteNotes(selected.athlete_id)
+    const grouped = groupByApparatus(details)
+    const generatedDate = new Date().toLocaleDateString()
 
-    const apparatusHtml = Object.keys(grouped)
-      .map((apparatus) => {
-        const items = grouped[apparatus]
-        const achieved = items.filter((item) => item.status === 'achieved').length
-        const readiness = apparatusReadiness(items)
-        const rows = items.map((item) => {
-          const status = getSkillStatus(item.status)
-          return `
-            <tr>
-              <td>${item.order_number || ''}. ${escapeHtml(item.element_name || '')}</td>
-              <td><span class="pill ${pdfStatusClass(item.status)}">${escapeHtml(status.label)}</span></td>
-              <td>${escapeHtml(item.main_issue || '-')}</td>
-              <td>${escapeHtml(item.correction_focus || '-')}</td>
-              <td>${escapeHtml(item.coach_note || '-')}</td>
-            </tr>
-          `
-        }).join('')
-
-        return `
-          <section class="apparatus-section">
-            <div class="section-head">
-              <div>
-                <h2>${escapeHtml(apparatusLabel(apparatus))}</h2>
-                <p>${achieved} / ${items.length} skills achieved</p>
-              </div>
-              <div class="readiness-badge">${readiness}%</div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Skill</th>
-                  <th>Status</th>
-                  <th>Main Issue</th>
-                  <th>Correction Focus</th>
-                  <th>Coach Note</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </section>
-        `
-      }).join('')
-
-    const weeklyHtml = notesForAthlete.length
-      ? notesForAthlete.map((note) => `
-          <div class="note">
-            <strong>${escapeHtml(note.week_start_date || '')}</strong>
-            <p><b>Effort:</b> ${escapeHtml(note.effort || '-')}</p>
-            <p><b>Improvement:</b> ${escapeHtml(note.improvement || '-')}</p>
-            <p><b>Correction:</b> ${escapeHtml(note.correction || '-')}</p>
-            <p><b>Next Focus:</b> ${escapeHtml(note.next_focus || '-')}</p>
-            <p><b>Coach Note:</b> ${escapeHtml(note.note || '-')}</p>
-          </div>
-        `).join('')
-      : '<p class="muted-pdf">No weekly notes yet.</p>'
-
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <title>${escapeHtml(athleteName)} - GymTrack Report</title>
-          <style>
-            * { box-sizing: border-box; }
-            body { margin: 0; padding: 34px; background: #f5f8ff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; }
-            .report { max-width: 1080px; margin: 0 auto; background: white; border-radius: 26px; overflow: hidden; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.15); }
-            .header { background: linear-gradient(135deg, #020617, #082f5f); padding: 34px; color: white; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
-            .header img { width: 230px; height: auto; object-fit: contain; }
-            .header h1 { margin: 20px 0 8px; font-size: 36px; letter-spacing: -1.5px; }
-            .header p { margin: 0; color: #bfdbfe; font-size: 15px; }
-            .date { text-align: right; font-weight: 700; color: #dbeafe; }
-            .content { padding: 32px; }
-            .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
-            .summary-card { border: 1px solid #dbeafe; border-radius: 18px; padding: 18px; background: #f8fbff; }
-            .summary-card span { display: block; color: #64748b; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .06em; }
-            .summary-card strong { font-size: 26px; }
-            .bar { height: 14px; border-radius: 99px; background: #e2e8f0; overflow: hidden; margin: 8px 0 28px; }
-            .bar-fill { height: 100%; width: ${selectedMetrics.readiness}%; background: linear-gradient(90deg, #0b6bff, #00c2ff); }
-            .section-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 14px; }
-            .section-head h2 { margin: 0; font-size: 24px; }
-            .section-head p { margin: 5px 0 0; color: #64748b; }
-            .readiness-badge { background: #0b6bff; color: white; border-radius: 999px; padding: 10px 16px; font-weight: 900; }
-            .apparatus-section { border: 1px solid #dbeafe; border-radius: 22px; padding: 22px; margin-bottom: 22px; page-break-inside: avoid; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th { text-align: left; background: #eff6ff; color: #1e3a8a; padding: 10px; }
-            td { border-bottom: 1px solid #e2e8f0; padding: 10px; vertical-align: top; }
-            .pill { border-radius: 999px; padding: 5px 9px; font-weight: 800; white-space: nowrap; font-size: 11px; display: inline-block; }
-            .ready { background: #dcfce7; color: #166534; }
-            .almost { background: #fef3c7; color: #92400e; }
-            .work { background: #fee2e2; color: #991b1b; }
-            .note { border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px; margin-bottom: 10px; background: #f8fafc; }
-            .note p { margin: 6px 0; }
-            .muted-pdf { color: #64748b; }
-            .footer { padding: 24px 32px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; display: flex; justify-content: space-between; }
-            @media print {
-              body { background: white; padding: 0; }
-              .report { box-shadow: none; border-radius: 0; }
-              .apparatus-section { page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          <main class="report">
-            <header class="header">
-              <div>
-                <img src="${logoUrl}" alt="GymTrack" />
-                <h1>Athlete Progress Report</h1>
-                <p>Track Progress. Build Champions.</p>
-              </div>
-              <div class="date">Generated<br />${escapeHtml(date)}</div>
-            </header>
-            <section class="content">
-              <div class="summary-grid">
-                <div class="summary-card"><span>Athlete</span><strong>${escapeHtml(athleteName)}</strong></div>
-                <div class="summary-card"><span>Team</span><strong>${escapeHtml(team)}</strong></div>
-                <div class="summary-card"><span>Program / Level</span><strong>${escapeHtml(program)} · ${escapeHtml(level)}</strong></div>
-                <div class="summary-card"><span>Coach</span><strong>${escapeHtml(coach)}</strong></div>
-                <div class="summary-card"><span>Total Skills</span><strong>${selectedMetrics.total}</strong></div>
-                <div class="summary-card"><span>Achieved</span><strong>${selectedMetrics.achieved}</strong></div>
-                <div class="summary-card"><span>Almost</span><strong>${selectedMetrics.almost}</strong></div>
-                <div class="summary-card"><span>Readiness</span><strong>${selectedMetrics.readiness}%</strong></div>
-              </div>
-              <div class="bar"><div class="bar-fill"></div></div>
-              ${apparatusHtml || '<p class="muted-pdf">No apparatus data found.</p>'}
-              <section class="apparatus-section">
-                <div class="section-head"><h2>Latest Weekly Notes</h2></div>
-                ${weeklyHtml}
-              </section>
-            </section>
-            <footer class="footer">
-              <span>GymTrack Coach Portal</span>
-              <span>Professional athlete progress report</span>
-            </footer>
-          </main>
-          <script>
-            window.onload = function() { setTimeout(function() { window.print(); }, 450); };
-          </script>
-        </body>
-      </html>
-    `
-
-    const printWindow = window.open('', '_blank', 'width=1100,height=900')
-    if (!printWindow) {
-      alert('Please allow pop-ups to export the PDF.')
-      return
+    function ensureSpace(height: number) {
+      if (y + height > pageHeight - 58) {
+        addFooter()
+        doc.addPage()
+        y = margin
+      }
     }
-    printWindow.document.open()
-    printWindow.document.write(html)
-    printWindow.document.close()
+
+    function addFooter() {
+      const pages = doc.getNumberOfPages()
+      doc.setFontSize(8)
+      doc.setTextColor(100, 116, 139)
+      doc.text('Generated by GymTrack Coach Portal', margin, pageHeight - 24)
+      doc.text(`Page ${pages}`, pageWidth - margin, pageHeight - 24, { align: 'right' })
+    }
+
+    function card(x: number, yPos: number, w: number, h: number, title: string, value: string) {
+      doc.setDrawColor(219, 234, 254)
+      doc.setFillColor(248, 251, 255)
+      doc.roundedRect(x, yPos, w, h, 10, 10, 'FD')
+      doc.setFontSize(8)
+      doc.setTextColor(100, 116, 139)
+      doc.text(title.toUpperCase(), x + 12, yPos + 18)
+      doc.setFontSize(15)
+      doc.setTextColor(15, 23, 42)
+      doc.setFont('helvetica', 'bold')
+      const lines = doc.splitTextToSize(value || '-', w - 24)
+      doc.text(lines.slice(0, 2), x + 12, yPos + 40)
+      doc.setFont('helvetica', 'normal')
+    }
+
+    function pill(text: string, status: string, x: number, yPos: number) {
+      if (status === 'achieved') {
+        doc.setFillColor(220, 252, 231)
+        doc.setTextColor(22, 101, 52)
+      } else if (status === 'almost') {
+        doc.setFillColor(254, 243, 199)
+        doc.setTextColor(146, 64, 14)
+      } else {
+        doc.setFillColor(254, 226, 226)
+        doc.setTextColor(153, 27, 27)
+      }
+      doc.roundedRect(x, yPos - 12, 66, 18, 9, 9, 'F')
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'bold')
+      doc.text(text, x + 33, yPos, { align: 'center' })
+      doc.setFont('helvetica', 'normal')
+    }
+
+    function sectionTitle(title: string, subtitle?: string) {
+      ensureSpace(42)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(16)
+      doc.setTextColor(15, 23, 42)
+      doc.text(title, margin, y)
+      y += 16
+      if (subtitle) {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(100, 116, 139)
+        doc.text(subtitle, margin, y)
+        y += 18
+      } else {
+        y += 10
+      }
+    }
+
+    async function getLogoDataUrl() {
+      try {
+        const response = await fetch('/gymtrack-logo.png')
+        const blob = await response.blob()
+        return await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(String(reader.result))
+          reader.readAsDataURL(blob)
+        })
+      } catch {
+        return ''
+      }
+    }
+
+    // Header
+    doc.setFillColor(2, 6, 23)
+    doc.rect(0, 0, pageWidth, 145, 'F')
+    doc.setFillColor(8, 47, 95)
+    doc.rect(0, 78, pageWidth, 67, 'F')
+
+    const logoData = await getLogoDataUrl()
+    if (logoData) {
+      doc.addImage(logoData, 'PNG', margin, 34, 190, 58, undefined, 'FAST')
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(26)
+    doc.setTextColor(255, 255, 255)
+    doc.text('Athlete Progress Report', margin, 112)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(191, 219, 254)
+    doc.text('Track Progress. Build Champions.', margin, 128)
+    doc.setTextColor(219, 234, 254)
+    doc.text(`Generated: ${generatedDate}`, pageWidth - margin, 58, { align: 'right' })
+
+    y = 175
+
+    const cardW = (contentWidth - 24) / 4
+    card(margin, y, cardW, 74, 'Athlete', athleteName)
+    card(margin + cardW + 8, y, cardW, 74, 'Team', team)
+    card(margin + (cardW + 8) * 2, y, cardW, 74, 'Level', `${program} · ${level}`)
+    card(margin + (cardW + 8) * 3, y, cardW, 74, 'Coach', coach)
+    y += 96
+
+    sectionTitle('Progress Summary')
+
+    const summaryW = (contentWidth - 24) / 4
+    card(margin, y, summaryW, 68, 'Total Skills', String(selectedMetrics.total))
+    card(margin + summaryW + 8, y, summaryW, 68, 'Achieved', String(selectedMetrics.achieved))
+    card(margin + (summaryW + 8) * 2, y, summaryW, 68, 'Almost', String(selectedMetrics.almost))
+    card(margin + (summaryW + 8) * 3, y, summaryW, 68, 'Readiness', `${selectedMetrics.readiness}%`)
+    y += 88
+
+    doc.setFillColor(226, 232, 240)
+    doc.roundedRect(margin, y, contentWidth, 12, 6, 6, 'F')
+    doc.setFillColor(0, 194, 255)
+    doc.roundedRect(margin, y, Math.max(3, (contentWidth * selectedMetrics.readiness) / 100), 12, 6, 6, 'F')
+    y += 38
+
+    // Apparatus summary
+    sectionTitle('Apparatus Summary', 'Skills achieved, total skills, and readiness by apparatus.')
+    Object.keys(grouped).forEach((apparatus) => {
+      const items = grouped[apparatus]
+      const achieved = items.filter((item) => item.status === 'achieved').length
+      const readiness = apparatusReadiness(items)
+      ensureSpace(34)
+      doc.setDrawColor(219, 234, 254)
+      doc.setFillColor(248, 251, 255)
+      doc.roundedRect(margin, y, contentWidth, 30, 8, 8, 'FD')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      doc.setTextColor(15, 23, 42)
+      doc.text(apparatusLabel(apparatus), margin + 12, y + 20)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(100, 116, 139)
+      doc.text(`${achieved} / ${items.length} achieved`, margin + 180, y + 20)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(11, 107, 255)
+      doc.text(`${readiness}% readiness`, pageWidth - margin - 12, y + 20, { align: 'right' })
+      y += 40
+    })
+
+    // Detail per apparatus
+    Object.keys(grouped).forEach((apparatus) => {
+      const items = grouped[apparatus]
+      const achieved = items.filter((item) => item.status === 'achieved').length
+      sectionTitle(`${apparatusLabel(apparatus)} Detail`, `${achieved} / ${items.length} skills achieved · ${apparatusReadiness(items)}% readiness`)
+
+      items.forEach((item) => {
+        const status = getSkillStatus(item.status)
+        const issue = item.main_issue || (item.status === 'achieved' ? 'No issue' : 'Not written yet')
+        const focus = item.correction_focus || '-'
+        const note = item.coach_note || '-'
+        const text = [
+          `Main issue: ${issue}`,
+          `Correction focus: ${focus}`,
+          `Coach note: ${note}`,
+        ].join('   |   ')
+        const lines = doc.splitTextToSize(text, contentWidth - 28)
+        const blockH = 52 + lines.length * 11
+        ensureSpace(blockH)
+
+        doc.setDrawColor(item.status === 'achieved' ? 187 : 254, item.status === 'achieved' ? 247 : 202, item.status === 'achieved' ? 208 : 202)
+        doc.setFillColor(item.status === 'achieved' ? 248 : 255, item.status === 'achieved' ? 253 : 247, item.status === 'achieved' ? 250 : 247)
+        doc.roundedRect(margin, y, contentWidth, blockH - 8, 10, 10, 'FD')
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10)
+        doc.setTextColor(15, 23, 42)
+        doc.text(`${item.order_number || ''}. ${item.element_name || ''}`, margin + 12, y + 22)
+        pill(status.label, item.status, pageWidth - margin - 78, y + 22)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8.5)
+        doc.setTextColor(71, 85, 105)
+        doc.text(lines, margin + 12, y + 42)
+        y += blockH
+      })
+    })
+
+    if (notesForAthlete.length) {
+      sectionTitle('Latest Weekly Notes')
+      notesForAthlete.forEach((note) => {
+        const text = `Effort: ${note.effort || '-'} | Improvement: ${note.improvement || '-'} | Correction: ${note.correction || '-'} | Next Focus: ${note.next_focus || '-'} | Coach Note: ${note.note || '-'}`
+        const lines = doc.splitTextToSize(text, contentWidth - 24)
+        const blockH = 38 + lines.length * 11
+        ensureSpace(blockH)
+        doc.setDrawColor(226, 232, 240)
+        doc.setFillColor(248, 250, 252)
+        doc.roundedRect(margin, y, contentWidth, blockH - 8, 10, 10, 'FD')
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(15, 23, 42)
+        doc.setFontSize(10)
+        doc.text(note.week_start_date || 'Weekly Note', margin + 12, y + 20)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8.5)
+        doc.setTextColor(71, 85, 105)
+        doc.text(lines, margin + 12, y + 38)
+        y += blockH
+      })
+    }
+
+    addFooter()
+    doc.save(`GymTrack_Report_${athleteName.replace(/[^a-z0-9]+/gi, '_')}.pdf`)
   }
 
   return (
