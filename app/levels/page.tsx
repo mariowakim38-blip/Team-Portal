@@ -15,6 +15,14 @@ const statuses = [
 
 const apparatusOrder = ['Vault', 'Bars', 'Beam', 'Floor', 'Physical Preparation']
 
+const apparatusMeta: Record<string, { icon: string; label: string }> = {
+  Vault: { icon: 'V', label: 'Vault' },
+  Bars: { icon: 'UB', label: 'Bars' },
+  Beam: { icon: 'BB', label: 'Beam' },
+  Floor: { icon: 'FX', label: 'Floor' },
+  'Physical Preparation': { icon: 'PP', label: 'Physical Prep' },
+}
+
 export default function Levels() {
   const router = useRouter()
 
@@ -27,6 +35,7 @@ export default function Levels() {
   const [elements, setElements] = useState<any[]>([])
   const [progress, setProgress] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState('')
+  const [activeApparatus, setActiveApparatus] = useState('')
 
   useEffect(() => {
     loadData()
@@ -37,6 +46,7 @@ export default function Levels() {
     setSelectedAthlete(null)
     setElements([])
     setProgress({})
+    setActiveApparatus('')
   }, [selectedTeamId])
 
   useEffect(() => {
@@ -94,6 +104,7 @@ export default function Levels() {
     if (!athlete?.program_level_id) {
       setElements([])
       setProgress({})
+      setActiveApparatus('')
       return
     }
 
@@ -111,7 +122,8 @@ export default function Levels() {
         .eq('athlete_id', athleteId),
     ])
 
-    setElements(routineElements || [])
+    const nextElements = routineElements || []
+    setElements(nextElements)
 
     const map: Record<string, any> = {}
     ;(athleteProgress || []).forEach((p: any) => {
@@ -119,6 +131,12 @@ export default function Levels() {
     })
 
     setProgress(map)
+
+    const firstApparatus = apparatusOrder.find((apparatus) =>
+      nextElements.some((el: any) => el.apparatus === apparatus)
+    ) || nextElements[0]?.apparatus || ''
+
+    setActiveApparatus(firstApparatus)
   }
 
   const groupedElements = useMemo(() => {
@@ -142,6 +160,9 @@ export default function Levels() {
     return ordered
   }, [elements])
 
+  const apparatusNames = Object.keys(groupedElements)
+  const activeElements = activeApparatus ? groupedElements[activeApparatus] || [] : []
+
   function getStatusIcon(status: string) {
     if (status === 'achieved') return '✓'
     if (status === 'almost') return '◐'
@@ -158,6 +179,13 @@ export default function Levels() {
     if (!items.length) return 0
     const achieved = items.filter((el) => progress[el.id]?.status === 'achieved').length
     return Math.round((achieved / items.length) * 100)
+  }
+
+  function problemCount(items: any[]) {
+    return items.filter((el) => {
+      const itemProgress = progress[el.id]
+      return itemProgress && itemProgress.status !== 'achieved'
+    }).length
   }
 
   async function updateProgress(elementId: string, field: string, value: string) {
@@ -202,7 +230,7 @@ export default function Levels() {
         <div>
           <h1 className="title">Levels & Skills</h1>
           <p className="muted">
-            Choose team first, then choose athlete. The athlete level loads the correct routine automatically.
+            Choose team first, then choose athlete. Press an apparatus icon to update only that apparatus.
           </p>
         </div>
       </div>
@@ -280,88 +308,113 @@ export default function Levels() {
       )}
 
       {selectedAthlete && elements.length > 0 && (
-        <div className="apparatus-sections">
-          {Object.entries(groupedElements).map(([apparatus, items]) => {
-            const readiness = apparatusReadiness(items)
+        <>
+          <div className="apparatus-tabs card mb">
+            {apparatusNames.map((apparatus) => {
+              const items = groupedElements[apparatus]
+              const readiness = apparatusReadiness(items)
+              const issues = problemCount(items)
+              const meta = apparatusMeta[apparatus] || { icon: apparatus.slice(0, 2).toUpperCase(), label: apparatus }
 
-            return (
-              <div key={apparatus} className="card mb">
-                <div className="report-card-header">
-                  <div>
-                    <h2>{apparatus}</h2>
-                    <p className="muted">{items.length} elements</p>
-                  </div>
-                  <span className="status-pill status-ready">{readiness}% readiness</span>
+              return (
+                <button
+                  type="button"
+                  key={apparatus}
+                  className={`apparatus-tab ${activeApparatus === apparatus ? 'active' : ''}`}
+                  onClick={() => setActiveApparatus(apparatus)}
+                >
+                  <span className="apparatus-icon">{meta.icon}</span>
+                  <span className="apparatus-tab-text">
+                    <strong>{meta.label}</strong>
+                    <small>{readiness}% ready · {issues} issue{issues === 1 ? '' : 's'}</small>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {activeApparatus && (
+            <div className="card mb">
+              <div className="report-card-header">
+                <div>
+                  <h2>{activeApparatus}</h2>
+                  <p className="muted">{activeElements.length} elements</p>
                 </div>
-
-                <div className="element-list">
-                  {items.map((el) => {
-                    const itemProgress = progress[el.id] || {}
-                    const status = itemProgress.status || 'not_achieved'
-
-                    return (
-                      <div key={el.id} className="element-card">
-                        <div className="element-header">
-                          <div>
-                            <span className={`status-pill ${getStatusClass(status)}`}>
-                              {getStatusIcon(status)}
-                            </span>
-                            <strong>{el.element_name}</strong>
-                          </div>
-                          {saving === el.id && <span className="muted">Saving...</span>}
-                        </div>
-
-                        <div className="form-grid mt">
-                          <label>
-                            Status
-                            <select
-                              value={status}
-                              onChange={(e) => updateProgress(el.id, 'status', e.target.value)}
-                            >
-                              {statuses.map(([value, label]) => (
-                                <option key={value} value={value}>{label}</option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <label>
-                            Main issue
-                            <input
-                              value={itemProgress.main_issue || ''}
-                              onChange={(e) => updateProgress(el.id, 'main_issue', e.target.value)}
-                            />
-                          </label>
-
-                          <label>
-                            Correction focus
-                            <input
-                              value={itemProgress.correction_focus || ''}
-                              onChange={(e) => updateProgress(el.id, 'correction_focus', e.target.value)}
-                            />
-                          </label>
-
-                          <label>
-                            Coach note
-                            <input
-                              value={itemProgress.coach_note || ''}
-                              onChange={(e) => updateProgress(el.id, 'coach_note', e.target.value)}
-                            />
-                          </label>
-                        </div>
-
-                        {itemProgress.updated_at && (
-                          <p className="muted">
-                            Last update: {new Date(itemProgress.updated_at).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                <span className={`status-pill ${apparatusReadiness(activeElements) >= 90 ? 'status-ready' : apparatusReadiness(activeElements) >= 75 ? 'status-almost' : 'status-work'}`}>
+                  {apparatusReadiness(activeElements)}% readiness
+                </span>
               </div>
-            )
-          })}
-        </div>
+
+              <div className="element-list">
+                {activeElements.map((el) => {
+                  const itemProgress = progress[el.id] || {}
+                  const status = itemProgress.status || 'not_achieved'
+
+                  return (
+                    <div key={el.id} className="element-card">
+                      <div className="element-header">
+                        <div>
+                          <span className={`status-pill ${getStatusClass(status)}`}>
+                            {getStatusIcon(status)}
+                          </span>
+                          <strong>{el.order_number}. {el.element_name}</strong>
+                        </div>
+                        {saving === el.id && <span className="muted">Saving...</span>}
+                      </div>
+
+                      <div className="form-grid mt">
+                        <label>
+                          Status
+                          <select
+                            value={status}
+                            onChange={(e) => updateProgress(el.id, 'status', e.target.value)}
+                          >
+                            {statuses.map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Main issue
+                          <input
+                            placeholder="Example: weak shoulder block, bent knees, timing..."
+                            value={itemProgress.main_issue || ''}
+                            onChange={(e) => updateProgress(el.id, 'main_issue', e.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Correction focus
+                          <input
+                            placeholder="Example: faster snap, hollow shape, point toes..."
+                            value={itemProgress.correction_focus || ''}
+                            onChange={(e) => updateProgress(el.id, 'correction_focus', e.target.value)}
+                          />
+                        </label>
+
+                        <label>
+                          Coach note
+                          <input
+                            placeholder="Private coach note or score"
+                            value={itemProgress.coach_note || ''}
+                            onChange={(e) => updateProgress(el.id, 'coach_note', e.target.value)}
+                          />
+                        </label>
+                      </div>
+
+                      {itemProgress.updated_at && (
+                        <p className="muted">
+                          Last update: {new Date(itemProgress.updated_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </AppShell>
   )
