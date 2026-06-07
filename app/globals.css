@@ -588,3 +588,71 @@ tr:last-child td {
     width: 100%;
   }
 }
+
+/* FIXES: clean GymTrack logo visibility + athlete card/status layout */
+.sidebar-logo,
+.sidebar-wordmark,
+.login-logo {
+  display: block;
+  object-fit: contain;
+}
+
+.sidebar-logo,
+.sidebar-wordmark {
+  max-width: 260px;
+  width: 100%;
+  filter: drop-shadow(0 0 24px rgba(0, 102, 255, 0.45));
+}
+
+.athlete-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  width: 100%;
+}
+
+.athlete-card {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.athlete-card-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.athlete-card-header > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.athlete-card-header .muted {
+  overflow-wrap: anywhere;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  flex: 0 0 auto;
+  position: static;
+  line-height: 1.2;
+}
+
+.progress-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .status-pill {
+    width: 100%;
+  }
+
+  .athlete-meta,
+  .report-mini-grid {
+    grid-template-columns: 1fr;
+  }
+}
