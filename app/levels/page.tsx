@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
+import ApparatusIcon, { apparatusLabel } from '@/components/ApparatusIcon'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
 import type { Athlete, Profile, Team } from '@/lib/types'
@@ -15,14 +16,6 @@ const statuses = [
 
 const apparatusOrder = ['Vault', 'Bars', 'Beam', 'Floor', 'Physical Preparation']
 
-const apparatusMeta: Record<string, { icon: string; label: string }> = {
-  Vault: { icon: 'V', label: 'Vault' },
-  Bars: { icon: 'UB', label: 'Bars' },
-  Beam: { icon: 'BB', label: 'Beam' },
-  Floor: { icon: 'FX', label: 'Floor' },
-  'Physical Preparation': { icon: 'PP', label: 'Physical Prep' },
-}
-
 export default function Levels() {
   const router = useRouter()
 
@@ -34,8 +27,10 @@ export default function Levels() {
   const [selectedAthlete, setSelectedAthlete] = useState<any | null>(null)
   const [elements, setElements] = useState<any[]>([])
   const [progress, setProgress] = useState<Record<string, any>>({})
-  const [saving, setSaving] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [savedMessage, setSavedMessage] = useState('')
   const [activeApparatus, setActiveApparatus] = useState('')
+  const [dirtyElements, setDirtyElements] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     loadData()
@@ -46,7 +41,9 @@ export default function Levels() {
     setSelectedAthlete(null)
     setElements([])
     setProgress({})
+    setDirtyElements({})
     setActiveApparatus('')
+    setSavedMessage('')
   }, [selectedTeamId])
 
   useEffect(() => {
@@ -100,6 +97,8 @@ export default function Levels() {
   async function loadAthleteRoutine(athleteId: string) {
     const athlete = athletes.find((a: any) => a.id === athleteId)
     setSelectedAthlete(athlete || null)
+    setDirtyElements({})
+    setSavedMessage('')
 
     if (!athlete?.program_level_id) {
       setElements([])
@@ -162,6 +161,7 @@ export default function Levels() {
 
   const apparatusNames = Object.keys(groupedElements)
   const activeElements = activeApparatus ? groupedElements[activeApparatus] || [] : []
+  const activeDirtyCount = activeElements.filter((el) => dirtyElements[el.id]).length
 
   function getStatusIcon(status: string) {
     if (status === 'achieved') return '✓'
@@ -184,11 +184,11 @@ export default function Levels() {
   function problemCount(items: any[]) {
     return items.filter((el) => {
       const itemProgress = progress[el.id]
-      return itemProgress && itemProgress.status !== 'achieved'
+      return !itemProgress || itemProgress.status !== 'achieved'
     }).length
   }
 
-  async function updateProgress(elementId: string, field: string, value: string) {
+  function updateProgress(elementId: string, field: string, value: string) {
     if (!selectedAthleteId) return
 
     const current = progress[elementId] || {}
@@ -209,19 +209,55 @@ export default function Levels() {
       [elementId]: updated,
     }))
 
-    setSaving(elementId)
+    setDirtyElements((old) => ({ ...old, [elementId]: true }))
+    setSavedMessage('')
+  }
+
+  async function saveActiveApparatus() {
+    if (!selectedAthleteId || !activeElements.length) return
+
+    const changed = activeElements.filter((el) => dirtyElements[el.id])
+    if (!changed.length) {
+      setSavedMessage('No changes to save.')
+      return
+    }
+
+    setSaving(true)
+    setSavedMessage('')
 
     const { data: userData } = await supabase.auth.getUser()
 
-    await supabase.from('athlete_element_progress').upsert(
-      {
-        ...updated,
+    const payload = changed.map((el) => {
+      const item = progress[el.id] || {}
+      return {
+        athlete_id: selectedAthleteId,
+        element_id: el.id,
+        status: item.status || 'not_achieved',
+        coach_note: item.coach_note || '',
+        main_issue: item.main_issue || '',
+        correction_focus: item.correction_focus || '',
+        updated_at: new Date().toISOString(),
         updated_by: userData.user?.id || null,
-      },
-      { onConflict: 'athlete_id,element_id' }
-    )
+      }
+    })
 
-    setSaving('')
+    const { error } = await supabase
+      .from('athlete_element_progress')
+      .upsert(payload, { onConflict: 'athlete_id,element_id' })
+
+    setSaving(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setDirtyElements((old) => {
+      const next = { ...old }
+      changed.forEach((el) => delete next[el.id])
+      return next
+    })
+    setSavedMessage(`${apparatusLabel(activeApparatus)} saved. Reports are updated.`)
   }
 
   return (
@@ -230,7 +266,7 @@ export default function Levels() {
         <div>
           <h1 className="title">Levels & Skills</h1>
           <p className="muted">
-            Choose team first, then choose athlete. Press an apparatus icon to update only that apparatus.
+            Choose team, athlete, then apparatus. Edit the skills and press Save to update the report.
           </p>
         </div>
       </div>
@@ -314,7 +350,6 @@ export default function Levels() {
               const items = groupedElements[apparatus]
               const readiness = apparatusReadiness(items)
               const issues = problemCount(items)
-              const meta = apparatusMeta[apparatus] || { icon: apparatus.slice(0, 2).toUpperCase(), label: apparatus }
 
               return (
                 <button
@@ -323,9 +358,9 @@ export default function Levels() {
                   className={`apparatus-tab ${activeApparatus === apparatus ? 'active' : ''}`}
                   onClick={() => setActiveApparatus(apparatus)}
                 >
-                  <span className="apparatus-icon">{meta.icon}</span>
+                  <ApparatusIcon apparatus={apparatus} />
                   <span className="apparatus-tab-text">
-                    <strong>{meta.label}</strong>
+                    <strong>{apparatusLabel(apparatus)}</strong>
                     <small>{readiness}% ready · {issues} issue{issues === 1 ? '' : 's'}</small>
                   </span>
                 </button>
@@ -337,7 +372,7 @@ export default function Levels() {
             <div className="card mb">
               <div className="report-card-header">
                 <div>
-                  <h2>{activeApparatus}</h2>
+                  <h2>{apparatusLabel(activeApparatus)}</h2>
                   <p className="muted">{activeElements.length} elements</p>
                 </div>
                 <span className={`status-pill ${apparatusReadiness(activeElements) >= 90 ? 'status-ready' : apparatusReadiness(activeElements) >= 75 ? 'status-almost' : 'status-work'}`}>
@@ -359,7 +394,7 @@ export default function Levels() {
                           </span>
                           <strong>{el.order_number}. {el.element_name}</strong>
                         </div>
-                        {saving === el.id && <span className="muted">Saving...</span>}
+                        {dirtyElements[el.id] && <span className="status-pill status-almost">Unsaved</span>}
                       </div>
 
                       <div className="form-grid mt">
@@ -411,6 +446,17 @@ export default function Levels() {
                     </div>
                   )
                 })}
+              </div>
+
+              <div className="save-panel">
+                <div>
+                  <strong>{activeDirtyCount} unsaved change{activeDirtyCount === 1 ? '' : 's'}</strong>
+                  <p className="muted">Press Save to update this athlete's report and readiness.</p>
+                  {savedMessage && <p className="save-success">{savedMessage}</p>}
+                </div>
+                <button className="btn" onClick={saveActiveApparatus} disabled={saving || activeDirtyCount === 0}>
+                  {saving ? 'Saving...' : `Save ${apparatusLabel(activeApparatus)}`}
+                </button>
               </div>
             </div>
           )}

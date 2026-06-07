@@ -6,6 +6,7 @@ import AppShell from '@/components/AppShell'
 import ProgressBar from '@/components/ProgressBar'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
+import { getAthleteReadinessRows } from '@/lib/readiness'
 import type { Athlete, Coach, Team, Level } from '@/lib/types'
 
 export default function Athletes() {
@@ -75,7 +76,7 @@ export default function Athletes() {
       supabase.from('levels').select('*').order('name'),
       supabase.from('programs').select('*').order('name'),
       supabase.from('program_levels').select('*').order('name'),
-      supabase.rpc('athlete_readiness'),
+      Promise.resolve({ data: [] }),
     ])
 
     setAthletes(a || [])
@@ -85,8 +86,9 @@ export default function Athletes() {
     setPrograms(p || [])
     setProgramLevels(pl || [])
 
+    const readinessRows = await getAthleteReadinessRows(profile?.role === 'coach' ? safeTeamIds : undefined)
     const map: Record<string, number> = {}
-    ;(r || []).forEach((x: any) => {
+    readinessRows.forEach((x: any) => {
       map[x.athlete_id] = Number(x.readiness)
     })
     setReadiness(map)

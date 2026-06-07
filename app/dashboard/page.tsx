@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
+import { getAthleteReadinessRows } from '@/lib/readiness'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ athletes: 0, coaches: 0, teams: 0, notes: 0, ready: 0 })
@@ -20,14 +21,14 @@ export default function Dashboard() {
         supabase.from('weekly_notes').select('*', { count: 'exact', head: true }),
       ])
 
-    const { data: readiness } = await supabase.rpc('athlete_readiness')
+    const readiness = await getAthleteReadinessRows()
 
     setStats({
       athletes: athletes || 0,
       coaches: coaches || 0,
       teams: teams || 0,
       notes: notes || 0,
-      ready: (readiness || []).filter((r: any) => Number(r.readiness) >= 85).length,
+      ready: readiness.filter((r: any) => Number(r.readiness) >= 85).length,
     })
   }
 

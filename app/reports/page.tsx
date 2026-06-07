@@ -4,28 +4,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import ProgressBar from '@/components/ProgressBar'
+import ApparatusIcon, { apparatusLabel } from '@/components/ApparatusIcon'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
+import { getAthleteReadinessRows, type ReadinessRow } from '@/lib/readiness'
 
 const apparatusOrder = ['Vault', 'Bars', 'Beam', 'Floor', 'Physical Preparation']
-
-const apparatusMeta: Record<string, { icon: string; label: string }> = {
-  Vault: { icon: 'V', label: 'Vault' },
-  Bars: { icon: 'UB', label: 'Bars' },
-  Beam: { icon: 'BB', label: 'Beam' },
-  Floor: { icon: 'FX', label: 'Floor' },
-  'Physical Preparation': { icon: 'PP', label: 'Physical Prep' },
-}
 
 export default function Reports() {
   const router = useRouter()
 
   const [role, setRole] = useState('coach')
-  const [rows, setRows] = useState<any[]>([])
+  const [rows, setRows] = useState<ReadinessRow[]>([])
   const [notes, setNotes] = useState<any[]>([])
   const [teamFilter, setTeamFilter] = useState('')
   const [coachFilter, setCoachFilter] = useState('')
-  const [selected, setSelected] = useState<any | null>(null)
+  const [selected, setSelected] = useState<ReadinessRow | null>(null)
   const [selectedAthlete, setSelectedAthlete] = useState<any | null>(null)
   const [details, setDetails] = useState<any[]>([])
   const [activeApparatus, setActiveApparatus] = useState('')
@@ -46,14 +40,7 @@ export default function Reports() {
     setRole(profile?.role || 'coach')
 
     const safeTeamIds = teamIds.length ? teamIds : [EMPTY_UUID]
-
-    const { data: readiness } = await supabase.rpc('athlete_readiness')
-
-    let reportRows = readiness || []
-
-    if (profile?.role === 'coach') {
-      reportRows = reportRows.filter((r: any) => safeTeamIds.includes(r.team_id))
-    }
+    const reportRows = await getAthleteReadinessRows(profile?.role === 'coach' ? safeTeamIds : undefined)
 
     let notesQuery = supabase
       .from('weekly_notes')
@@ -81,29 +68,21 @@ export default function Reports() {
   const teams = Array.from(new Set(rows.map((r) => r.team_name).filter(Boolean)))
   const coaches = Array.from(new Set(rows.map((r) => r.coach_name).filter(Boolean)))
 
-  const groupedDetails = useMemo(() => {
-    const grouped: Record<string, any[]> = {}
-
-    details.forEach((item) => {
-      if (!grouped[item.apparatus]) grouped[item.apparatus] = []
-      grouped[item.apparatus].push(item)
-    })
-
-    const ordered: Record<string, any[]> = {}
-
-    apparatusOrder.forEach((apparatus) => {
-      if (grouped[apparatus]) ordered[apparatus] = grouped[apparatus]
-    })
-
-    Object.keys(grouped).forEach((apparatus) => {
-      if (!ordered[apparatus]) ordered[apparatus] = grouped[apparatus]
-    })
-
-    return ordered
-  }, [details])
-
+  const groupedDetails = useMemo(() => groupByApparatus(details), [details])
   const apparatusNames = Object.keys(groupedDetails)
   const activeDetails = activeApparatus ? groupedDetails[activeApparatus] || [] : []
+
+  const selectedMetrics = useMemo(() => {
+    const total = details.length || selected?.total_skills || 0
+    const achieved = details.length
+      ? details.filter((item) => item.status === 'achieved').length
+      : selected?.achieved_skills || 0
+    const almost = details.length
+      ? details.filter((item) => item.status === 'almost').length
+      : selected?.almost_skills || 0
+    const readiness = total ? Math.round((achieved / total) * 100) : 0
+    return { total, achieved, almost, readiness, needsWork: Math.max(total - achieved - almost, 0) }
+  }, [details, selected])
 
   function getStatus(readiness: number) {
     if (readiness >= 90) return { label: 'Ready', className: 'status-ready' }
@@ -131,7 +110,7 @@ export default function Reports() {
     return items.filter((item) => item.status !== 'achieved').length
   }
 
-  async function openFullReport(row: any) {
+  async function openFullReport(row: ReadinessRow) {
     setSelected(row)
     setSelectedAthlete(null)
     setDetails([])
@@ -190,6 +169,169 @@ export default function Reports() {
 
     setActiveApparatus(firstApparatus)
     setLoadingDetails(false)
+  }
+
+  function exportPDF() {
+    if (!selected) return
+
+    const grouped = groupByApparatus(details)
+    const logoUrl = `${window.location.origin}/gymtrack-logo.png`
+    const date = new Date().toLocaleDateString()
+    const athleteName = selected.athlete_name
+    const team = selectedAthlete?.teams?.name || selected.team_name || '-'
+    const coach = selectedAthlete?.coaches?.full_name || selected.coach_name || '-'
+    const program = selectedAthlete?.programs?.name || selected.program_name || '-'
+    const level = selectedAthlete?.program_levels?.name || selected.level_name || '-'
+    const notesForAthlete = getAthleteNotes(selected.athlete_id)
+
+    const apparatusHtml = Object.keys(grouped)
+      .map((apparatus) => {
+        const items = grouped[apparatus]
+        const achieved = items.filter((item) => item.status === 'achieved').length
+        const readiness = apparatusReadiness(items)
+        const rows = items.map((item) => {
+          const status = getSkillStatus(item.status)
+          return `
+            <tr>
+              <td>${item.order_number || ''}. ${escapeHtml(item.element_name || '')}</td>
+              <td><span class="pill ${pdfStatusClass(item.status)}">${escapeHtml(status.label)}</span></td>
+              <td>${escapeHtml(item.main_issue || '-')}</td>
+              <td>${escapeHtml(item.correction_focus || '-')}</td>
+              <td>${escapeHtml(item.coach_note || '-')}</td>
+            </tr>
+          `
+        }).join('')
+
+        return `
+          <section class="apparatus-section">
+            <div class="section-head">
+              <div>
+                <h2>${escapeHtml(apparatusLabel(apparatus))}</h2>
+                <p>${achieved} / ${items.length} skills achieved</p>
+              </div>
+              <div class="readiness-badge">${readiness}%</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Skill</th>
+                  <th>Status</th>
+                  <th>Main Issue</th>
+                  <th>Correction Focus</th>
+                  <th>Coach Note</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+        `
+      }).join('')
+
+    const weeklyHtml = notesForAthlete.length
+      ? notesForAthlete.map((note) => `
+          <div class="note">
+            <strong>${escapeHtml(note.week_start_date || '')}</strong>
+            <p><b>Effort:</b> ${escapeHtml(note.effort || '-')}</p>
+            <p><b>Improvement:</b> ${escapeHtml(note.improvement || '-')}</p>
+            <p><b>Correction:</b> ${escapeHtml(note.correction || '-')}</p>
+            <p><b>Next Focus:</b> ${escapeHtml(note.next_focus || '-')}</p>
+            <p><b>Coach Note:</b> ${escapeHtml(note.note || '-')}</p>
+          </div>
+        `).join('')
+      : '<p class="muted-pdf">No weekly notes yet.</p>'
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>${escapeHtml(athleteName)} - GymTrack Report</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 34px; background: #f5f8ff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; }
+            .report { max-width: 1080px; margin: 0 auto; background: white; border-radius: 26px; overflow: hidden; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.15); }
+            .header { background: linear-gradient(135deg, #020617, #082f5f); padding: 34px; color: white; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+            .header img { width: 230px; height: auto; object-fit: contain; }
+            .header h1 { margin: 20px 0 8px; font-size: 36px; letter-spacing: -1.5px; }
+            .header p { margin: 0; color: #bfdbfe; font-size: 15px; }
+            .date { text-align: right; font-weight: 700; color: #dbeafe; }
+            .content { padding: 32px; }
+            .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
+            .summary-card { border: 1px solid #dbeafe; border-radius: 18px; padding: 18px; background: #f8fbff; }
+            .summary-card span { display: block; color: #64748b; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .06em; }
+            .summary-card strong { font-size: 26px; }
+            .bar { height: 14px; border-radius: 99px; background: #e2e8f0; overflow: hidden; margin: 8px 0 28px; }
+            .bar-fill { height: 100%; width: ${selectedMetrics.readiness}%; background: linear-gradient(90deg, #0b6bff, #00c2ff); }
+            .section-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 14px; }
+            .section-head h2 { margin: 0; font-size: 24px; }
+            .section-head p { margin: 5px 0 0; color: #64748b; }
+            .readiness-badge { background: #0b6bff; color: white; border-radius: 999px; padding: 10px 16px; font-weight: 900; }
+            .apparatus-section { border: 1px solid #dbeafe; border-radius: 22px; padding: 22px; margin-bottom: 22px; page-break-inside: avoid; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th { text-align: left; background: #eff6ff; color: #1e3a8a; padding: 10px; }
+            td { border-bottom: 1px solid #e2e8f0; padding: 10px; vertical-align: top; }
+            .pill { border-radius: 999px; padding: 5px 9px; font-weight: 800; white-space: nowrap; font-size: 11px; display: inline-block; }
+            .ready { background: #dcfce7; color: #166534; }
+            .almost { background: #fef3c7; color: #92400e; }
+            .work { background: #fee2e2; color: #991b1b; }
+            .note { border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px; margin-bottom: 10px; background: #f8fafc; }
+            .note p { margin: 6px 0; }
+            .muted-pdf { color: #64748b; }
+            .footer { padding: 24px 32px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; display: flex; justify-content: space-between; }
+            @media print {
+              body { background: white; padding: 0; }
+              .report { box-shadow: none; border-radius: 0; }
+              .apparatus-section { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <main class="report">
+            <header class="header">
+              <div>
+                <img src="${logoUrl}" alt="GymTrack" />
+                <h1>Athlete Progress Report</h1>
+                <p>Track Progress. Build Champions.</p>
+              </div>
+              <div class="date">Generated<br />${escapeHtml(date)}</div>
+            </header>
+            <section class="content">
+              <div class="summary-grid">
+                <div class="summary-card"><span>Athlete</span><strong>${escapeHtml(athleteName)}</strong></div>
+                <div class="summary-card"><span>Team</span><strong>${escapeHtml(team)}</strong></div>
+                <div class="summary-card"><span>Program / Level</span><strong>${escapeHtml(program)} · ${escapeHtml(level)}</strong></div>
+                <div class="summary-card"><span>Coach</span><strong>${escapeHtml(coach)}</strong></div>
+                <div class="summary-card"><span>Total Skills</span><strong>${selectedMetrics.total}</strong></div>
+                <div class="summary-card"><span>Achieved</span><strong>${selectedMetrics.achieved}</strong></div>
+                <div class="summary-card"><span>Almost</span><strong>${selectedMetrics.almost}</strong></div>
+                <div class="summary-card"><span>Readiness</span><strong>${selectedMetrics.readiness}%</strong></div>
+              </div>
+              <div class="bar"><div class="bar-fill"></div></div>
+              ${apparatusHtml || '<p class="muted-pdf">No apparatus data found.</p>'}
+              <section class="apparatus-section">
+                <div class="section-head"><h2>Latest Weekly Notes</h2></div>
+                ${weeklyHtml}
+              </section>
+            </section>
+            <footer class="footer">
+              <span>GymTrack Coach Portal</span>
+              <span>Professional athlete progress report</span>
+            </footer>
+          </main>
+          <script>
+            window.onload = function() { setTimeout(function() { window.print(); }, 450); };
+          </script>
+        </body>
+      </html>
+    `
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=900')
+    if (!printWindow) {
+      alert('Please allow pop-ups to export the PDF.')
+      return
+    }
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
   }
 
   return (
@@ -275,7 +417,7 @@ export default function Reports() {
                 <div>
                   <h2>{r.athlete_name}</h2>
                   <p className="muted">
-                    {r.team_name || 'No team'} · {r.level_name || 'No level'}
+                    {r.team_name || 'No team'} · {r.program_name || 'No program'} · {r.level_name || 'No level'}
                   </p>
                 </div>
 
@@ -319,34 +461,39 @@ export default function Reports() {
                 <h2>{selected.athlete_name}</h2>
                 <p className="muted">
                   {selectedAthlete?.teams?.name || selected.team_name || 'No team'} ·{' '}
-                  {selectedAthlete?.programs?.name || 'No program'} ·{' '}
+                  {selectedAthlete?.programs?.name || selected.program_name || 'No program'} ·{' '}
                   {selectedAthlete?.program_levels?.name || selected.level_name || 'No level'}
                 </p>
               </div>
 
-              <button className="btn secondary" onClick={() => setSelected(null)}>
-                Close
-              </button>
+              <div className="modal-actions">
+                <button className="btn" onClick={exportPDF} disabled={loadingDetails || details.length === 0}>
+                  Export PDF
+                </button>
+                <button className="btn secondary" onClick={() => setSelected(null)}>
+                  Close
+                </button>
+              </div>
             </div>
 
             <div className="card mb">
               <h3>Progress Summary</h3>
-              <ProgressBar value={Number(selected.readiness || 0)} />
+              <ProgressBar value={selectedMetrics.readiness} />
 
               <div className="report-mini-grid mt">
                 <div>
                   <span className="muted">Achieved Skills</span>
-                  <strong>{selected.achieved_skills}</strong>
+                  <strong>{selectedMetrics.achieved}</strong>
                 </div>
 
                 <div>
                   <span className="muted">Total Skills</span>
-                  <strong>{selected.total_skills}</strong>
+                  <strong>{selectedMetrics.total}</strong>
                 </div>
 
                 <div>
                   <span className="muted">Readiness</span>
-                  <strong>{Number(selected.readiness || 0)}%</strong>
+                  <strong>{selectedMetrics.readiness}%</strong>
                 </div>
               </div>
             </div>
@@ -372,7 +519,6 @@ export default function Reports() {
                       const items = groupedDetails[apparatus]
                       const readiness = apparatusReadiness(items)
                       const issues = issueCount(items)
-                      const meta = apparatusMeta[apparatus] || { icon: apparatus.slice(0, 2).toUpperCase(), label: apparatus }
 
                       return (
                         <button
@@ -381,9 +527,9 @@ export default function Reports() {
                           className={`apparatus-tab ${activeApparatus === apparatus ? 'active' : ''}`}
                           onClick={() => setActiveApparatus(apparatus)}
                         >
-                          <span className="apparatus-icon">{meta.icon}</span>
+                          <ApparatusIcon apparatus={apparatus} />
                           <span className="apparatus-tab-text">
-                            <strong>{meta.label}</strong>
+                            <strong>{apparatusLabel(apparatus)}</strong>
                             <small>{readiness}% ready · {issues} problem{issues === 1 ? '' : 's'}</small>
                           </span>
                         </button>
@@ -394,7 +540,7 @@ export default function Reports() {
                   <div className="apparatus-report-panel mt">
                     <div className="report-card-header">
                       <div>
-                        <h3>{activeApparatus}</h3>
+                        <h3>{apparatusLabel(activeApparatus)}</h3>
                         <p className="muted">
                           {activeDetails.filter((item) => item.status === 'achieved').length} / {activeDetails.length} achieved
                         </p>
@@ -467,6 +613,27 @@ export default function Reports() {
   )
 }
 
+function groupByApparatus(items: any[]) {
+  const grouped: Record<string, any[]> = {}
+
+  items.forEach((item) => {
+    if (!grouped[item.apparatus]) grouped[item.apparatus] = []
+    grouped[item.apparatus].push(item)
+  })
+
+  const ordered: Record<string, any[]> = {}
+
+  apparatusOrder.forEach((apparatus) => {
+    if (grouped[apparatus]) ordered[apparatus] = grouped[apparatus]
+  })
+
+  Object.keys(grouped).forEach((apparatus) => {
+    if (!ordered[apparatus]) ordered[apparatus] = grouped[apparatus]
+  })
+
+  return ordered
+}
+
 function ReportStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="card">
@@ -474,4 +641,19 @@ function ReportStat({ label, value }: { label: string; value: number }) {
       <div className="stat">{value}</div>
     </div>
   )
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function pdfStatusClass(status: string) {
+  if (status === 'achieved') return 'ready'
+  if (status === 'almost') return 'almost'
+  return 'work'
 }
