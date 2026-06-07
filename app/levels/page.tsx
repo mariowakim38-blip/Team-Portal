@@ -1,273 +1,264 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
-import type { Level, Skill, Athlete, Profile } from '@/lib/types'
-
-const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
+import type { Athlete, Profile } from '@/lib/types'
 
 const statuses = [
-  ['not_started', 'Not started'],
-  ['learning', 'Learning'],
-  ['almost', 'Almost'],
-  ['achieved', 'Achieved'],
-  ['excellent', 'Excellent'],
+  ['not_achieved', '✕ Not Achieved'],
+  ['almost', '◐ Almost'],
+  ['achieved', '✓ Achieved'],
+]
+
+const apparatusOrder = [
+  'Vault',
+  'Bars',
+  'Beam',
+  'Floor',
+  'Physical Preparation',
 ]
 
 export default function Levels() {
+  const router = useRouter()
+
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [levels, setLevels] = useState<Level[]>([])
-  const [skills, setSkills] = useState<Skill[]>([])
   const [athletes, setAthletes] = useState<Athlete[]>([])
-  const [levelForm, setLevelForm] = useState<any>({})
-  const [skillForm, setSkillForm] = useState<any>({ apparatus: 'Floor' })
-  const [selectedAthlete, setSelectedAthlete] = useState('')
-  const [athleteSkills, setAthleteSkills] = useState<Record<string, string>>({})
+  const [selectedAthleteId, setSelectedAthleteId] = useState('')
+  const [selectedAthlete, setSelectedAthlete] = useState<any | null>(null)
+  const [elements, setElements] = useState<any[]>([])
+  const [progress, setProgress] = useState<Record<string, any>>({})
+  const [saving, setSaving] = useState<string>('')
 
   useEffect(() => {
-    load()
+    loadAthletes()
   }, [])
 
   useEffect(() => {
-    loadAthleteSkills()
-  }, [selectedAthlete])
+    if (selectedAthleteId) {
+      loadAthleteRoutine(selectedAthleteId)
+    } else {
+      setSelectedAthlete(null)
+      setElements([])
+      setProgress({})
+    }
+  }, [selectedAthleteId])
 
-  async function getAssignedTeamIds(coachId: string) {
-    const { data } = await supabase
-      .from('coach_teams')
-      .select('team_id')
-      .eq('coach_id', coachId)
+  async function loadAthletes() {
+    const { user, profile: p, teamIds } = await getCurrentUserProfile()
 
-    return (data || []).map((x: any) => x.team_id)
-  }
-
-  async function load() {
-    const { data: userData } = await supabase.auth.getUser()
-    const user = userData.user
-    if (!user) return
-
-    const { data: p } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
+    if (!user) {
+      router.push('/login')
+      return
+    }
 
     setProfile(p)
 
-    let teamIds: string[] = []
-
-    if (p?.role === 'coach') {
-      const { data: coach } = await supabase
-        .from('coaches')
-        .select('*')
-        .eq('profile_id', user.id)
-        .single()
-
-      if (coach?.id) {
-        teamIds = await getAssignedTeamIds(coach.id)
-      }
-    }
+    const safeTeamIds = teamIds.length ? teamIds : [EMPTY_UUID]
 
     let athletesQuery = supabase
       .from('athletes')
-      .select('*,teams(name),levels(name),coaches(full_name)')
+      .select(`
+        *,
+        teams(name),
+        coaches(full_name),
+        programs(name),
+        program_levels(name)
+      `)
       .order('first_name')
 
     if (p?.role === 'coach') {
-      athletesQuery = athletesQuery.in('team_id', teamIds.length ? teamIds : [EMPTY_UUID])
+      athletesQuery = athletesQuery.in('team_id', safeTeamIds)
     }
 
-    const [{ data: l }, { data: s }, { data: a }] = await Promise.all([
-      supabase.from('levels').select('*').order('name'),
-      supabase.from('skills').select('*').order('apparatus').order('order_number'),
-      athletesQuery,
+    const { data } = await athletesQuery
+    setAthletes(data || [])
+  }
+
+  async function loadAthleteRoutine(athleteId: string) {
+    const athlete = athletes.find((a: any) => a.id === athleteId)
+    setSelectedAthlete(athlete || null)
+
+    if (!athlete?.program_level_id) {
+      setElements([])
+      setProgress({})
+      return
+    }
+
+    const [{ data: routineElements }, { data: athleteProgress }] = await Promise.all([
+      supabase
+        .from('routine_elements')
+        .select('*')
+        .eq('level_id', athlete.program_level_id)
+        .order('apparatus')
+        .order('order_number'),
+
+      supabase
+        .from('athlete_element_progress')
+        .select('*')
+        .eq('athlete_id', athleteId),
     ])
 
-    setLevels(l || [])
-    setSkills(s || [])
-    setAthletes(a || [])
+    setElements(routineElements || [])
+
+    const map: Record<string, any> = {}
+
+    ;(athleteProgress || []).forEach((p: any) => {
+      map[p.element_id] = p
+    })
+
+    setProgress(map)
   }
 
-  async function addLevel(e: React.FormEvent) {
-    e.preventDefault()
-    if (profile?.role !== 'admin') return alert('Only admin can add levels.')
+  const groupedElements = useMemo(() => {
+    const grouped: Record<string, any[]> = {}
 
-    await supabase.from('levels').insert(levelForm)
-    setLevelForm({})
-    load()
+    elements.forEach((el) => {
+      if (!grouped[el.apparatus]) grouped[el.apparatus] = []
+      grouped[el.apparatus].push(el)
+    })
+
+    const ordered: Record<string, any[]> = {}
+
+    apparatusOrder.forEach((apparatus) => {
+      if (grouped[apparatus]) ordered[apparatus] = grouped[apparatus]
+    })
+
+    Object.keys(grouped).forEach((apparatus) => {
+      if (!ordered[apparatus]) ordered[apparatus] = grouped[apparatus]
+    })
+
+    return ordered
+  }, [elements])
+
+  function getStatusIcon(status: string) {
+    if (status === 'achieved') return '✓'
+    if (status === 'almost') return '◐'
+    return '✕'
   }
 
-  async function addSkill(e: React.FormEvent) {
-    e.preventDefault()
-    if (profile?.role !== 'admin') return alert('Only admin can add skills.')
-
-    await supabase.from('skills').insert(skillForm)
-    setSkillForm({ apparatus: 'Floor' })
-    load()
+  function getStatusClass(status: string) {
+    if (status === 'achieved') return 'status-ready'
+    if (status === 'almost') return 'status-almost'
+    return 'status-work'
   }
 
-  async function loadAthleteSkills() {
-    if (!selectedAthlete) return
+  function apparatusReadiness(items: any[]) {
+    if (!items.length) return 0
 
-    const { data } = await supabase
-      .from('athlete_skills')
-      .select('skill_id,status')
-      .eq('athlete_id', selectedAthlete)
+    const achieved = items.filter((el) => {
+      return progress[el.id]?.status === 'achieved'
+    }).length
 
-    const map: Record<string, string> = {}
-    ;(data || []).forEach((x: any) => (map[x.skill_id] = x.status))
-
-    setAthleteSkills(map)
+    return Math.round((achieved / items.length) * 100)
   }
 
-  async function updateSkill(skillId: string, status: string) {
-    if (!selectedAthlete) return alert('Choose athlete first')
+  async function updateProgress(elementId: string, field: string, value: string) {
+    if (!selectedAthleteId) return
+
+    setProgress((old) => ({
+      ...old,
+      [elementId]: {
+        ...old[elementId],
+        athlete_id: selectedAthleteId,
+        element_id: elementId,
+        [field]: value,
+      },
+    }))
+
+    setSaving(elementId)
 
     const { data: userData } = await supabase.auth.getUser()
     const user = userData.user
 
-    await supabase.from('athlete_skills').upsert(
+    const current = progress[elementId] || {}
+
+    await supabase.from('athlete_element_progress').upsert(
       {
-        athlete_id: selectedAthlete,
-        skill_id: skillId,
-        status,
+        athlete_id: selectedAthleteId,
+        element_id: elementId,
+        status: field === 'status' ? value : current.status || 'not_achieved',
+        coach_note: field === 'coach_note' ? value : current.coach_note || '',
+        main_issue: field === 'main_issue' ? value : current.main_issue || '',
+        correction_focus: field === 'correction_focus' ? value : current.correction_focus || '',
         updated_by: user?.id || null,
+        updated_at: new Date().toISOString(),
       },
-      { onConflict: 'athlete_id,skill_id' }
+      {
+        onConflict: 'athlete_id,element_id',
+      }
     )
 
-    setAthleteSkills({ ...athleteSkills, [skillId]: status })
+    setSaving('')
   }
 
   return (
     <AppShell>
-      <h1 className="title">Levels & Skills</h1>
-
-      {profile?.role === 'admin' && (
-        <div className="grid-2 mb">
-          <div className="card">
-            <h2>Add Level</h2>
-            <form onSubmit={addLevel}>
-              <label>
-                Level name
-                <input
-                  required
-                  placeholder="Level 1"
-                  value={levelForm.name || ''}
-                  onChange={(e) => setLevelForm({ ...levelForm, name: e.target.value })}
-                />
-              </label>
-
-              <label>
-                Description
-                <textarea
-                  value={levelForm.description || ''}
-                  onChange={(e) => setLevelForm({ ...levelForm, description: e.target.value })}
-                />
-              </label>
-
-              <button className="btn mt">Add Level</button>
-            </form>
-          </div>
-
-          <div className="card">
-            <h2>Add Skill</h2>
-            <form onSubmit={addSkill} className="form-grid">
-              <label>
-                Level
-                <select
-                  required
-                  value={skillForm.level_id || ''}
-                  onChange={(e) => setSkillForm({ ...skillForm, level_id: e.target.value })}
-                >
-                  <option value="">Choose</option>
-                  {levels.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Apparatus
-                <select
-                  value={skillForm.apparatus || 'Floor'}
-                  onChange={(e) => setSkillForm({ ...skillForm, apparatus: e.target.value })}
-                >
-                  {['Floor', 'Beam', 'Bars', 'Vault', 'Conditioning', 'Flexibility'].map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Skill name
-                <input
-                  required
-                  value={skillForm.skill_name || ''}
-                  onChange={(e) => setSkillForm({ ...skillForm, skill_name: e.target.value })}
-                />
-              </label>
-
-              <label>
-                Order
-                <input
-                  type="number"
-                  value={skillForm.order_number || ''}
-                  onChange={(e) => setSkillForm({ ...skillForm, order_number: Number(e.target.value) })}
-                />
-              </label>
-
-              <button className="btn">Add Skill</button>
-            </form>
-          </div>
+      <div className="topbar">
+        <div>
+          <h1 className="title">Levels & Skills</h1>
+          <p className="muted">
+            Select an athlete. The system automatically loads the correct routine elements from the assigned level.
+          </p>
         </div>
-      )}
+      </div>
 
       <div className="card mb">
         <label>
-          Update skills for athlete
-          <select value={selectedAthlete} onChange={(e) => setSelectedAthlete(e.target.value)}>
+          Athlete
+          <select
+            value={selectedAthleteId}
+            onChange={(e) => setSelectedAthleteId(e.target.value)}
+          >
             <option value="">Choose athlete</option>
-            {athletes.map((a) => (
+            {athletes.map((a: any) => (
               <option key={a.id} value={a.id}>
-                {a.first_name} {a.last_name} {a.teams?.name ? `- ${a.teams.name}` : ''}
+                {a.first_name} {a.last_name}
+                {a.teams?.name ? ` - ${a.teams.name}` : ''}
+                {a.program_levels?.name ? ` - ${a.program_levels.name}` : ''}
               </option>
             ))}
           </select>
         </label>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Level</th>
-            <th>Apparatus</th>
-            <th>Skill</th>
-            <th>Status</th>
-          </tr>
-        </thead>
+      {selectedAthlete && (
+        <div className="card mb">
+          <div className="report-card-header">
+            <div>
+              <h2>{selectedAthlete.first_name} {selectedAthlete.last_name}</h2>
+              <p className="muted">
+                {selectedAthlete.programs?.name || 'No program'} ·{' '}
+                {selectedAthlete.program_levels?.name || 'No level'} ·{' '}
+                {selectedAthlete.teams?.name || 'No team'}
+              </p>
+            </div>
 
-        <tbody>
-          {skills.map((s) => (
-            <tr key={s.id}>
-              <td>{levels.find((l) => l.id === s.level_id)?.name || '-'}</td>
-              <td><span className="badge">{s.apparatus}</span></td>
-              <td>{s.skill_name}</td>
-              <td>
-                <select
-                  value={athleteSkills[s.id] || 'not_started'}
-                  onChange={(e) => updateSkill(s.id, e.target.value)}
-                >
-                  {statuses.map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </AppShell>
-  )
-}
+            <span className="badge">
+              Coach: {selectedAthlete.coaches?.full_name || '-'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {selectedAthlete && !selectedAthlete.program_level_id && (
+        <div className="card">
+          <h2>No level assigned</h2>
+          <p className="muted">
+            This athlete does not have a program level yet. Assign a program and level from the Athletes page.
+          </p>
+        </div>
+      )}
+
+      {selectedAthlete && selectedAthlete.program_level_id && elements.length === 0 && (
+        <div className="card">
+          <h2>No routine elements found</h2>
+          <p className="muted">
+            This level has no routine elements yet. Import the USAG / FIG elements into routine_elements.
+          </p>
+        </div>
+      )}
+
+      <div class
