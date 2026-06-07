@@ -38,10 +38,8 @@ export default function Login() {
 
     setLoading(false)
 
-    if (profile?.role === 'admin') {
+    if (profile?.role === 'admin' || profile?.role === 'coach') {
       router.push('/dashboard')
-    } else if (profile?.role === 'coach') {
-      router.push('/weekly-notes')
     } else {
       setError('No role assigned to this user')
     }
@@ -50,8 +48,9 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="card login-card">
-        <h1 className="title">Gymnest Team Portal</h1>
-        <p className="muted">Login as admin or coach.</p>
+        <img src="/gymtrack-logo.png" alt="GymTrack" className="login-logo" />
+        <h1 className="title">Welcome Back</h1>
+        <p className="muted">Track progress. Build champions.</p>
 
         <form onSubmit={submit}>
           <label>
@@ -61,7 +60,7 @@ export default function Login() {
               onChange={(e) => setUsername(e.target.value)}
               type="text"
               required
-              placeholder="admin or coach1"
+              placeholder="admin or coach username"
             />
           </label>
 
@@ -73,14 +72,15 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
                 required
+                placeholder="Enter password"
               />
             </label>
           </div>
 
-          {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+          {error && <p style={{ color: 'var(--danger)', fontWeight: 800 }}>{error}</p>}
 
           <button className="btn mt" disabled={loading}>
-            {loading ? 'Loading...' : 'Login'}
+            {loading ? 'Signing in...' : 'Enter GymTrack'}
           </button>
         </form>
       </div>
