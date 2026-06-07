@@ -436,3 +436,41 @@ td {
     padding: 18px;
   }
 }
+.element-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.element-card {
+  background: #f8fbff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.element-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.element-header div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.apparatus-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.element-card input {
+  background: white;
+}
+
+.element-card select {
+  background: white;
+}
