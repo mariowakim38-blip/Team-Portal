@@ -104,7 +104,6 @@ export default function Levels() {
     setElements(routineElements || [])
 
     const map: Record<string, any> = {}
-
     ;(athleteProgress || []).forEach((p: any) => {
       map[p.element_id] = p
     })
@@ -148,9 +147,7 @@ export default function Levels() {
   function apparatusReadiness(items: any[]) {
     if (!items.length) return 0
 
-    const achieved = items.filter((el) => {
-      return progress[el.id]?.status === 'achieved'
-    }).length
+    const achieved = items.filter((el) => progress[el.id]?.status === 'achieved').length
 
     return Math.round((achieved / items.length) * 100)
   }
@@ -158,14 +155,22 @@ export default function Levels() {
   async function updateProgress(elementId: string, field: string, value: string) {
     if (!selectedAthleteId) return
 
+    const current = progress[elementId] || {}
+
+    const updated = {
+      ...current,
+      athlete_id: selectedAthleteId,
+      element_id: elementId,
+      status: field === 'status' ? value : current.status || 'not_achieved',
+      coach_note: field === 'coach_note' ? value : current.coach_note || '',
+      main_issue: field === 'main_issue' ? value : current.main_issue || '',
+      correction_focus: field === 'correction_focus' ? value : current.correction_focus || '',
+      updated_at: new Date().toISOString(),
+    }
+
     setProgress((old) => ({
       ...old,
-      [elementId]: {
-        ...old[elementId],
-        athlete_id: selectedAthleteId,
-        element_id: elementId,
-        [field]: value,
-      },
+      [elementId]: updated,
     }))
 
     setSaving(elementId)
@@ -173,18 +178,10 @@ export default function Levels() {
     const { data: userData } = await supabase.auth.getUser()
     const user = userData.user
 
-    const current = progress[elementId] || {}
-
     await supabase.from('athlete_element_progress').upsert(
       {
-        athlete_id: selectedAthleteId,
-        element_id: elementId,
-        status: field === 'status' ? value : current.status || 'not_achieved',
-        coach_note: field === 'coach_note' ? value : current.coach_note || '',
-        main_issue: field === 'main_issue' ? value : current.main_issue || '',
-        correction_focus: field === 'correction_focus' ? value : current.correction_focus || '',
+        ...updated,
         updated_by: user?.id || null,
-        updated_at: new Date().toISOString(),
       },
       {
         onConflict: 'athlete_id,element_id',
@@ -200,7 +197,7 @@ export default function Levels() {
         <div>
           <h1 className="title">Levels & Skills</h1>
           <p className="muted">
-            Select an athlete. The system automatically loads the correct routine elements from the assigned level.
+            Select an athlete. The assigned level automatically loads the correct routine elements.
           </p>
         </div>
       </div>
@@ -247,7 +244,7 @@ export default function Levels() {
         <div className="card">
           <h2>No level assigned</h2>
           <p className="muted">
-            This athlete does not have a program level yet. Assign a program and level from the Athletes page.
+            Assign a program and level from the Athletes page first.
           </p>
         </div>
       )}
@@ -256,9 +253,104 @@ export default function Levels() {
         <div className="card">
           <h2>No routine elements found</h2>
           <p className="muted">
-            This level has no routine elements yet. Import the USAG / FIG elements into routine_elements.
+            This level has no imported elements yet.
           </p>
         </div>
       )}
 
-      <div class
+      {selectedAthlete && elements.length > 0 && (
+        <div className="apparatus-sections">
+          {Object.entries(groupedElements).map(([apparatus, items]) => {
+            const readiness = apparatusReadiness(items)
+
+            return (
+              <div key={apparatus} className="card mb">
+                <div className="report-card-header">
+                  <div>
+                    <h2>{apparatus}</h2>
+                    <p className="muted">{items.length} elements</p>
+                  </div>
+
+                  <span className="status-pill status-ready">
+                    {readiness}% readiness
+                  </span>
+                </div>
+
+                <div className="element-list">
+                  {items.map((el) => {
+                    const itemProgress = progress[el.id] || {}
+                    const status = itemProgress.status || 'not_achieved'
+
+                    return (
+                      <div key={el.id} className="element-card">
+                        <div className="element-header">
+                          <div>
+                            <span className={`status-pill ${getStatusClass(status)}`}>
+                              {getStatusIcon(status)}
+                            </span>
+                            <strong>{el.element_name}</strong>
+                          </div>
+
+                          {saving === el.id && <span className="muted">Saving...</span>}
+                        </div>
+
+                        <div className="form-grid mt">
+                          <label>
+                            Status
+                            <select
+                              value={status}
+                              onChange={(e) => updateProgress(el.id, 'status', e.target.value)}
+                            >
+                              {statuses.map(([value, label]) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label>
+                            Main issue
+                            <input
+                              value={itemProgress.main_issue || ''}
+                              onChange={(e) => updateProgress(el.id, 'main_issue', e.target.value)}
+                              placeholder="Bent knees, weak push, low amplitude..."
+                            />
+                          </label>
+
+                          <label>
+                            Correction focus
+                            <input
+                              value={itemProgress.correction_focus || ''}
+                              onChange={(e) => updateProgress(el.id, 'correction_focus', e.target.value)}
+                              placeholder="Straight legs, hollow body, shoulder push..."
+                            />
+                          </label>
+
+                          <label>
+                            Coach note
+                            <input
+                              value={itemProgress.coach_note || ''}
+                              onChange={(e) => updateProgress(el.id, 'coach_note', e.target.value)}
+                              placeholder="Short coach note"
+                            />
+                          </label>
+                        </div>
+
+                        {itemProgress.updated_at && (
+                          <p className="muted">
+                            Last update: {new Date(itemProgress.updated_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </AppShell>
+  )
+}
