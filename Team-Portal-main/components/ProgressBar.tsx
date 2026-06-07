@@ -1,0 +1,1 @@
+export default function ProgressBar({value}:{value:number}){const safe=Math.max(0,Math.min(100,Math.round(value||0)));return <div><div className="progress-wrap"><div className="progress" style={{width:`${safe}%`}} /></div><small className="muted">{safe}% readiness</small></div>}
