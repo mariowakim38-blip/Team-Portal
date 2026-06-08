@@ -19,6 +19,7 @@ export default function Reports() {
   const [notes, setNotes] = useState<any[]>([])
   const [teamFilter, setTeamFilter] = useState('')
   const [coachFilter, setCoachFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<ReadinessRow | null>(null)
   const [selectedAthlete, setSelectedAthlete] = useState<any | null>(null)
   const [details, setDetails] = useState<any[]>([])
@@ -58,12 +59,26 @@ export default function Reports() {
   }
 
   const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+
     return rows.filter((r) => {
       const teamOk = teamFilter ? r.team_name === teamFilter : true
       const coachOk = coachFilter ? r.coach_name === coachFilter : true
-      return teamOk && coachOk
+      const searchable = [
+        r.athlete_name,
+        r.team_name,
+        r.coach_name,
+        r.program_name,
+        r.level_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const searchOk = q ? searchable.includes(q) : true
+      return teamOk && coachOk && searchOk
     })
-  }, [rows, teamFilter, coachFilter])
+  }, [rows, teamFilter, coachFilter, search])
 
   const teams = Array.from(new Set(rows.map((r) => r.team_name).filter(Boolean)))
   const coaches = Array.from(new Set(rows.map((r) => r.coach_name).filter(Boolean)))
@@ -546,6 +561,15 @@ export default function Reports() {
 
         <div className="form-grid">
           <label>
+            Search reports
+            <input
+              placeholder="Search by athlete, team, coach, program, or level..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+
+          <label>
             Team
             <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               <option value="">All teams</option>
@@ -575,6 +599,7 @@ export default function Reports() {
             className="btn secondary"
             type="button"
             onClick={() => {
+              setSearch('')
               setTeamFilter('')
               setCoachFilter('')
             }}

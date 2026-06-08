@@ -24,6 +24,7 @@ export default function Athletes() {
   const [readiness, setReadiness] = useState<Record<string, number>>({})
   const [form, setForm] = useState<any>({})
   const [teamFilter, setTeamFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Athlete | null>(null)
 
   useEffect(() => {
@@ -100,10 +101,30 @@ export default function Athletes() {
   }, [programLevels, form.program_id])
 
   const filteredAthletes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+
     return athletes.filter((a) => {
-      return teamFilter ? a.teams?.name === teamFilter : true
+      const teamOk = teamFilter ? a.teams?.name === teamFilter : true
+      const searchable = [
+        a.first_name,
+        a.last_name,
+        `${a.first_name || ''} ${a.last_name || ''}`,
+        a.teams?.name,
+        a.coaches?.full_name,
+        a.programs?.name,
+        a.program_levels?.name,
+        a.levels?.name,
+        a.parent_name,
+        a.parent_phone,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const searchOk = q ? searchable.includes(q) : true
+      return teamOk && searchOk
     })
-  }, [athletes, teamFilter])
+  }, [athletes, teamFilter, search])
 
   function statusLabel(value: number) {
     if (value >= 90) return { text: 'Ready', cls: 'status-ready' }
@@ -334,6 +355,15 @@ export default function Athletes() {
       <div className="card mb">
         <div className="form-grid">
           <label>
+            Search athletes
+            <input
+              placeholder="Search by athlete, team, coach, level, or parent..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+
+          <label>
             Filter by team
             <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               <option value="">All teams</option>
@@ -345,8 +375,8 @@ export default function Athletes() {
             </select>
           </label>
 
-          <button className="btn secondary" type="button" onClick={() => setTeamFilter('')}>
-            Clear Filter
+          <button className="btn secondary" type="button" onClick={() => { setTeamFilter(''); setSearch('') }}>
+            Clear Search
           </button>
         </div>
       </div>

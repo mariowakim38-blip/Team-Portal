@@ -51,12 +51,40 @@ export default function Coaches() {
   async function addCoach(e: React.FormEvent) {
     e.preventDefault()
 
-    await supabase.from('coaches').insert({
-      full_name: form.full_name,
-      phone: form.phone || null,
-      username: form.username || null,
+    const username = String(form.username || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '')
+
+    if (!username) {
+      alert('Username is required.')
+      return
+    }
+
+    if (!form.password || String(form.password).length < 6) {
+      alert('Password must be at least 6 characters.')
+      return
+    }
+
+    const response = await fetch('/api/admin/create-coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: form.full_name,
+        username,
+        password: form.password,
+        phone: form.phone || null,
+      }),
     })
 
+    const result = await response.json()
+
+    if (!response.ok) {
+      alert(result.error || 'Could not create coach.')
+      return
+    }
+
+    alert(`Coach created. Login username: ${username}`)
     setForm({})
     load()
   }
@@ -131,6 +159,18 @@ export default function Coaches() {
             </label>
 
             <label>
+              Password
+              <input
+                required
+                type="password"
+                minLength={6}
+                placeholder="minimum 6 characters"
+                value={form.password || ''}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+            </label>
+
+            <label>
               Phone
               <input
                 value={form.phone || ''}
@@ -138,7 +178,11 @@ export default function Coaches() {
               />
             </label>
 
-            <button className="btn">Add Coach</button>
+            <p className="muted" style={{ gridColumn: '1 / -1' }}>
+              Coach login will be created automatically as username@gymnest.local. Coaches only type the username on the login page.
+            </p>
+
+            <button className="btn">Create Coach Login</button>
           </form>
         </div>
 
@@ -228,7 +272,7 @@ export default function Coaches() {
             {coaches.map((c: any) => (
               <tr key={c.id}>
                 <td>{c.full_name}</td>
-                <td>{c.username || '-'}</td>
+                <td>{c.username ? `${c.username}@gymnest.local` : '-'}</td>
                 <td>{c.phone || '-'}</td>
                 <td>
                   <button className="btn danger" onClick={() => deleteCoach(c.id)}>
