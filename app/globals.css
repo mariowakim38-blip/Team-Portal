@@ -1100,3 +1100,87 @@ tr:last-child td {
     overflow-x: auto;
   }
 }
+
+/* GymTrack updated brand + role dashboard */
+.dashboard-brand-card {
+  overflow: hidden;
+}
+
+.dashboard-brand-logo {
+  width: 100%;
+  max-width: 420px;
+  display: block;
+  margin: 0 auto 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 28px rgba(0, 102, 255, 0.35));
+}
+
+.dashboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dashboard-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(2, 6, 15, 0.42);
+}
+
+.dashboard-list-row strong {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-list-row span {
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .dashboard-brand-logo {
+    max-width: 280px;
+  }
+
+  .dashboard-list-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-list-row span {
+    white-space: normal;
+  }
+}
+
+/* Final GymTrack lightning-logo sizing */
+.sidebar-logo,
+.sidebar-wordmark {
+  max-width: 260px;
+  max-height: 185px;
+  object-fit: contain;
+}
+
+.login-logo {
+  max-width: 440px;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+@media (max-width: 760px) {
+  .sidebar-logo,
+  .sidebar-wordmark {
+    max-width: 240px;
+    max-height: 170px;
+  }
+
+  .login-logo {
+    max-width: 320px;
+    max-height: 280px;
+  }
+}
