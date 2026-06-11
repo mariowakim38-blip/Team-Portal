@@ -1184,3 +1184,49 @@ tr:last-child td {
     max-height: 280px;
   }
 }
+
+
+/* Final logo update: GymTrack by Gymnest transparent wordmark */
+.sidebar-logo,
+.sidebar-wordmark {
+  width: 100%;
+  max-width: 270px;
+  max-height: 115px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 22px rgba(0, 102, 255, 0.42));
+}
+
+.login-logo {
+  width: 100%;
+  max-width: 520px;
+  max-height: 210px;
+  object-fit: contain;
+  margin: 0 auto 24px;
+  filter: drop-shadow(0 0 28px rgba(0, 102, 255, 0.40));
+}
+
+.dashboard-brand-logo {
+  width: 100%;
+  max-width: 500px;
+  max-height: 180px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 30px rgba(0, 102, 255, 0.40));
+}
+
+@media (max-width: 760px) {
+  .sidebar-logo,
+  .sidebar-wordmark {
+    max-width: 245px;
+    max-height: 105px;
+  }
+
+  .login-logo {
+    max-width: 340px;
+    max-height: 150px;
+  }
+
+  .dashboard-brand-logo {
+    max-width: 330px;
+    max-height: 140px;
+  }
+}
