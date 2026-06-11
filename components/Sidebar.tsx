@@ -58,7 +58,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand brand-logo-only">
-        <img src="/gymtrack-logo.png" alt="GymTrack" className="sidebar-logo sidebar-wordmark" />
+        <img src="/gymtrack-logo-transparent.png" alt="GymTrack" className="sidebar-logo sidebar-wordmark" />
       </div>
 
       <nav className="nav">

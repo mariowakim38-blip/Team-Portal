@@ -1230,3 +1230,55 @@ tr:last-child td {
     max-height: 140px;
   }
 }
+
+/* Latest fix: transparent GymTrack logo, no white/checker background */
+.sidebar-logo,
+.login-logo,
+.dashboard-brand-logo,
+.report-logo {
+  background: transparent !important;
+  mix-blend-mode: normal !important;
+  object-fit: contain !important;
+}
+
+.login-logo {
+  display: block;
+  width: min(440px, 100%);
+  height: auto;
+  margin: 0 auto 22px;
+}
+
+.sidebar-logo {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.dashboard-brand-logo {
+  width: min(420px, 100%);
+  height: auto;
+}
+
+/* Final logo + favicon fix: use transparent PNG, no white/checker rectangle */
+.sidebar-logo,
+.sidebar-wordmark,
+.login-logo,
+.dashboard-brand-logo,
+.report-logo {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none;
+  object-fit: contain !important;
+}
+
+.brand-logo-only {
+  background: transparent !important;
+}
+
+.dashboard-brand-card img,
+.login-card img,
+.brand img {
+  background: transparent !important;
+}

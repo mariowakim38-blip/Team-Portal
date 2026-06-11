@@ -254,7 +254,7 @@ export default function Reports() {
 
     async function getLogoDataUrl() {
       try {
-        const response = await fetch('/gymtrack-logo.png')
+        const response = await fetch('/gymtrack-logo-transparent.png')
         const blob = await response.blob()
         return await new Promise<string>((resolve) => {
           const reader = new FileReader()
