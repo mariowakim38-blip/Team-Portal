@@ -48,7 +48,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="card login-card">
-        <img src="/gymtrack-logo-transparent.png" alt="GymTrack" className="login-logo" />
+        <img src="/gymtrack-logo-final.png" alt="GymTrack" className="login-logo" />
         <h1 className="title">Welcome Back</h1>
         <p className="muted">Track progress. Build champions.</p>
 

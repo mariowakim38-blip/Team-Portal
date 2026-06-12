@@ -1282,3 +1282,72 @@ tr:last-child td {
 .brand img {
   background: transparent !important;
 }
+
+
+/* FINAL CLEAN LOGO + FAVICON UPDATE */
+.brand.brand-logo-only {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 0 22px;
+  margin-bottom: 26px;
+  background: transparent !important;
+}
+
+.sidebar-logo,
+.sidebar-wordmark {
+  display: block !important;
+  width: 100% !important;
+  max-width: 285px !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 18px rgba(0, 132, 255, 0.42)) !important;
+}
+
+.login-logo {
+  display: block !important;
+  width: min(560px, 100%) !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  margin: 0 auto 24px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 24px rgba(0, 132, 255, 0.38)) !important;
+}
+
+.dashboard-brand-logo {
+  display: block !important;
+  width: min(520px, 100%) !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 24px rgba(0, 132, 255, 0.38)) !important;
+}
+
+.report-logo {
+  background: transparent !important;
+  object-fit: contain !important;
+}
+
+@media (max-width: 900px) {
+  .sidebar-logo,
+  .sidebar-wordmark {
+    max-width: 245px !important;
+  }
+
+  .login-logo {
+    width: min(390px, 100%) !important;
+  }
+
+  .dashboard-brand-logo {
+    width: min(380px, 100%) !important;
+  }
+}

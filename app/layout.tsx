@@ -4,8 +4,9 @@ export const metadata = {
   title: 'GymTrack',
   description: 'Track progress. Build champions.',
   icons: {
-    icon: '/favicon.ico',
+    icon: '/favicon.png',
     apple: '/apple-icon.png',
+    shortcut: '/favicon.png',
   },
 }
 

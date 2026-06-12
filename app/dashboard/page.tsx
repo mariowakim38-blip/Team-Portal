@@ -120,7 +120,7 @@ export default function Dashboard() {
           </div>
 
           <div className="card dashboard-brand-card">
-            <img src="/gymtrack-logo-transparent.png" alt="GymTrack" className="dashboard-brand-logo" />
+            <img src="/gymtrack-logo-final.png" alt="GymTrack" className="dashboard-brand-logo" />
             <h2>Track Progress. Build Champions.</h2>
             <p className="muted">
               Manage USAG and FIG High Performance progress, coach notes, apparatus readiness, and professional PDF reports.
