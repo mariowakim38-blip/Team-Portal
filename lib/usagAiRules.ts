@@ -132,7 +132,17 @@ export function rulesFor(apparatus: Apparatus, levelName?: string | null, routin
     if (rules.length) matched.push(...rules)
   }
 
-  return matched.length ? matched : candidates
+  return matched
+}
+
+export function rulesForElement(apparatus: Apparatus, levelName: string | null | undefined, elementName: string, databaseRules: UsagDeductionRule[] = []) {
+  const normalizedApparatus = apparatus === 'Bars' ? 'Uneven Bars' : apparatus
+  const candidates = (databaseRules.length ? databaseRules : USAG_TEXTBOOK_FALLBACK_RULES).filter((rule) => {
+    const ruleApparatus = rule.apparatus === 'Bars' ? 'Uneven Bars' : rule.apparatus
+    return ruleApparatus === normalizedApparatus && levelMatch(rule.level_name, levelName)
+  })
+
+  return candidates.filter((rule) => elementMatch(rule.element_name, elementName))
 }
 
 export function scoreFromDeductions(deductions: { value: number }[]) {
