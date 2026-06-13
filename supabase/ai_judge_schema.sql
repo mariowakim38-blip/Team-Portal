@@ -33,3 +33,6 @@ as $$
   where status = 'pending'
   and created_at < now() - interval '7 days';
 $$;
+
+
+-- Then run supabase/usag_ai_deduction_rules.sql to install the element-specific USAG rule engine.

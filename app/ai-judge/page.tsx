@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { supabase } from '@/lib/supabaseClient'
 import { getCurrentUserProfile, EMPTY_UUID } from '@/lib/roleAccess'
-import { rulesFor, scoreFromDeductions, type Apparatus } from '@/lib/usagAiRules'
+import { rulesFor, scoreFromDeductions, type Apparatus, type UsagDeductionRule, type RoutineElementLite } from '@/lib/usagAiRules'
 
 type AthleteRow = {
   id: string
@@ -27,6 +27,7 @@ type Deduction = {
   value: number
   severity: 'small' | 'medium' | 'large'
   correction: string
+  source_note?: string
   coach_note?: string
 }
 
@@ -49,6 +50,9 @@ export default function AiJudgePage() {
   const [approved, setApproved] = useState(false)
   const [reviewId, setReviewId] = useState('')
   const [deductions, setDeductions] = useState<Deduction[]>([])
+  const [routineElements, setRoutineElements] = useState<RoutineElementLite[]>([])
+  const [databaseRules, setDatabaseRules] = useState<UsagDeductionRule[]>([])
+  const [rulesNotice, setRulesNotice] = useState('')
   const [coachFinalScore, setCoachFinalScore] = useState<number | ''>('')
   const [summary, setSummary] = useState('')
   const [duration, setDuration] = useState<number | null>(null)
@@ -96,8 +100,59 @@ export default function AiJudgePage() {
   }
 
   const selectedAthlete = useMemo(() => athletes.find((a) => a.id === athleteId) || null, [athletes, athleteId])
-  const activeRules = useMemo(() => rulesFor(apparatus), [apparatus])
+  const selectedLevelName = selectedAthlete?.program_levels?.name || selectedAthlete?.levels?.name || null
+  const activeRules = useMemo(
+    () => rulesFor(apparatus, selectedLevelName, routineElements, databaseRules),
+    [apparatus, selectedLevelName, routineElements, databaseRules],
+  )
   const estimatedScore = useMemo(() => scoreFromDeductions(deductions), [deductions])
+
+  useEffect(() => {
+    loadRulesForSetup()
+  }, [athleteId, apparatus, athletes])
+
+  async function loadRulesForSetup() {
+    const athlete = athletes.find((a) => a.id === athleteId)
+    if (!athlete) return
+
+    const levelId = athlete.program_level_id || athlete.level_id
+    const levelName = athlete.program_levels?.name || athlete.levels?.name || null
+
+    let routine: RoutineElementLite[] = []
+    if (levelId) {
+      const [{ data: athleteRoutine }, { data: defaultRoutine }] = await Promise.all([
+        supabase
+          .from('routine_elements')
+          .select('element_name,apparatus')
+          .eq('athlete_id', athlete.id)
+          .eq('apparatus', apparatus),
+        supabase
+          .from('routine_elements')
+          .select('element_name,apparatus')
+          .eq('level_id', levelId)
+          .eq('apparatus', apparatus)
+          .is('athlete_id', null),
+      ])
+      routine = ((athleteRoutine?.length ? athleteRoutine : defaultRoutine) || []) as RoutineElementLite[]
+    }
+    setRoutineElements(routine)
+
+    const { data: dbRules, error } = await supabase
+      .from('usag_deduction_rules')
+      .select('id,level_name,apparatus,element_name,textbook_fault,deduction_min,deduction_max,default_value,measurement_target,correction_focus,source_note')
+      .eq('apparatus', apparatus)
+      .in('level_name', ['all', levelName || ''])
+      .order('level_name')
+      .order('element_name')
+
+    if (!error && dbRules?.length) {
+      setDatabaseRules(dbRules as unknown as UsagDeductionRule[])
+      setRulesNotice(`Loaded ${dbRules.length} USAG textbook rule rows from Supabase for ${levelName || 'this level'} / ${apparatus}.`)
+    } else {
+      setDatabaseRules([])
+      setRulesNotice(`Using built-in USAG textbook starter rules. Run supabase/usag_ai_deduction_rules.sql for the editable Supabase rules database.`)
+    }
+  }
 
   async function uploadVideo() {
     if (!videoFile || !selectedAthlete) {
@@ -143,18 +198,24 @@ export default function AiJudgePage() {
 
     await new Promise((resolve) => setTimeout(resolve, 650))
 
-    const baseRules = activeRules.slice(0, apparatus === 'Beam' ? 5 : 4)
-    const generated = baseRules.map((rule, index) => {
-      const severity = index % 3 === 0 ? 'small' : index % 3 === 1 ? 'medium' : 'small'
-      const value = severity === 'small' ? rule.small : severity === 'medium' ? rule.medium : rule.large
+    if (!activeRules.length) {
+      alert('No USAG textbook rules were found for this athlete level and apparatus. Add rules in supabase/usag_ai_deduction_rules.sql first.')
+      setAnalyzing(false)
+      return
+    }
+
+    const generated = activeRules.map((rule) => {
+      const range = Number(rule.deduction_max || 0) - Number(rule.deduction_min || 0)
+      const severity = range >= 0.4 ? 'medium' : 'small'
       return {
         rule_id: rule.id,
-        skill: rule.skill,
-        issue: rule.issue,
-        metric: rule.metric,
-        value,
+        skill: rule.element_name,
+        issue: rule.textbook_fault,
+        metric: rule.measurement_target,
+        value: Number(rule.default_value || rule.deduction_min || 0.1),
         severity: severity as 'small' | 'medium' | 'large',
-        correction: rule.correction,
+        correction: rule.correction_focus,
+        source_note: rule.source_note,
       }
     })
 
@@ -325,8 +386,12 @@ export default function AiJudgePage() {
           <div>
             <h2>3. Analyze Using USAG Rule Engine</h2>
             <p className="muted">
-              This first version applies structured USAG-style deduction categories for Beam/Floor and prepares the workflow for MediaPipe landmark measurements.
+              GymTrack now loads element-specific USAG textbook rules for the athlete’s level and apparatus. MediaPipe/AI measurements should be matched only to these rules; the coach confirms the final score.
             </p>
+            {rulesNotice && <p className="muted mt"><strong>Rule engine:</strong> {rulesNotice}</p>}
+            {!!routineElements.length && (
+              <p className="muted"><strong>Routine loaded:</strong> {routineElements.map((el) => el.element_name).join(' · ')}</p>
+            )}
           </div>
           <div className="modal-actions">
             <button className="btn secondary" type="button" onClick={resetReview}>Reset</button>
@@ -402,6 +467,7 @@ export default function AiJudgePage() {
                     <strong>{deduction.correction}</strong>
                   </div>
                 </div>
+                {deduction.source_note && <p className="muted mt"><strong>Manual source:</strong> {deduction.source_note}</p>}
 
                 <div className="form-grid mt">
                   <label>
