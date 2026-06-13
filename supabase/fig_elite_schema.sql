@@ -49,3 +49,33 @@ do $$ begin
     create policy "authenticated manage fig routine elements" on fig_routine_elements for all to authenticated using (true) with check (true);
   end if;
 end $$;
+
+-- Athlete-specific FIG routine sync into the existing Levels & Skills / Reports pipeline
+alter table routine_elements add column if not exists athlete_id uuid references athletes(id) on delete cascade;
+alter table routine_elements add column if not exists fig_element_id text references fig_elements(id) on delete set null;
+alter table routine_elements add column if not exists fig_code text;
+alter table routine_elements add column if not exists fig_value text;
+alter table routine_elements add column if not exists fig_dv numeric default 0;
+alter table routine_elements add column if not exists fig_apparatus text;
+
+-- The old unique constraint was level-wide. FIG routines need to be athlete-specific.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'routine_elements_level_id_apparatus_element_name_key'
+  ) then
+    alter table routine_elements drop constraint routine_elements_level_id_apparatus_element_name_key;
+  end if;
+end $$;
+
+create unique index if not exists routine_elements_level_default_unique
+on routine_elements(level_id, apparatus, element_name)
+where athlete_id is null;
+
+create unique index if not exists routine_elements_athlete_fig_unique
+on routine_elements(athlete_id, apparatus, fig_element_id)
+where athlete_id is not null and fig_element_id is not null;
+
+create index if not exists routine_elements_athlete_idx on routine_elements(athlete_id);
+create index if not exists routine_elements_fig_element_idx on routine_elements(fig_element_id);

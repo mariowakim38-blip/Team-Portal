@@ -145,11 +145,19 @@ export default function Reports() {
       return
     }
 
-    const [{ data: routineElements }, { data: progressRows }] = await Promise.all([
+    const [{ data: athleteRoutineElements }, { data: defaultRoutineElements }, { data: progressRows }] = await Promise.all([
+      supabase
+        .from('routine_elements')
+        .select('*')
+        .eq('athlete_id', row.athlete_id)
+        .order('apparatus')
+        .order('order_number'),
+
       supabase
         .from('routine_elements')
         .select('*')
         .eq('level_id', athlete.program_level_id)
+        .is('athlete_id', null)
         .order('apparatus')
         .order('order_number'),
 
@@ -158,6 +166,8 @@ export default function Reports() {
         .select('*')
         .eq('athlete_id', row.athlete_id),
     ])
+
+    const routineElements = athleteRoutineElements?.length ? athleteRoutineElements : (defaultRoutineElements || [])
 
     const progressMap: Record<string, any> = {}
     ;(progressRows || []).forEach((progress: any) => {

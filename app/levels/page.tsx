@@ -107,11 +107,19 @@ export default function Levels() {
       return
     }
 
-    const [{ data: routineElements }, { data: athleteProgress }] = await Promise.all([
+    const [{ data: athleteRoutineElements }, { data: defaultRoutineElements }, { data: athleteProgress }] = await Promise.all([
+      supabase
+        .from('routine_elements')
+        .select('*')
+        .eq('athlete_id', athleteId)
+        .order('apparatus')
+        .order('order_number'),
+
       supabase
         .from('routine_elements')
         .select('*')
         .eq('level_id', athlete.program_level_id)
+        .is('athlete_id', null)
         .order('apparatus')
         .order('order_number'),
 
@@ -121,7 +129,7 @@ export default function Levels() {
         .eq('athlete_id', athleteId),
     ])
 
-    const nextElements = routineElements || []
+    const nextElements = athleteRoutineElements?.length ? athleteRoutineElements : (defaultRoutineElements || [])
     setElements(nextElements)
 
     const map: Record<string, any> = {}

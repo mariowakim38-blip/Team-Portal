@@ -31,22 +31,32 @@ export async function getAthleteReadinessRows(teamIds?: string[]) {
   const levelIds = Array.from(new Set((athletes || []).map((a: any) => a.program_level_id).filter(Boolean)))
   const athleteIds = (athletes || []).map((a: any) => a.id)
 
-  const [{ data: elements, error: elementsError }, { data: progress, error: progressError }] = await Promise.all([
+  const [{ data: levelElements, error: levelElementsError }, { data: athleteElements, error: athleteElementsError }, { data: progress, error: progressError }] = await Promise.all([
     levelIds.length
-      ? supabase.from('routine_elements').select('id,level_id').in('level_id', levelIds)
+      ? supabase.from('routine_elements').select('id,level_id,athlete_id').in('level_id', levelIds).is('athlete_id', null)
+      : Promise.resolve({ data: [], error: null } as any),
+    athleteIds.length
+      ? supabase.from('routine_elements').select('id,level_id,athlete_id').in('athlete_id', athleteIds)
       : Promise.resolve({ data: [], error: null } as any),
     athleteIds.length
       ? supabase.from('athlete_element_progress').select('athlete_id,element_id,status').in('athlete_id', athleteIds)
       : Promise.resolve({ data: [], error: null } as any),
   ])
 
-  if (elementsError) throw elementsError
+  if (levelElementsError) throw levelElementsError
+  if (athleteElementsError) throw athleteElementsError
   if (progressError) throw progressError
 
   const elementsByLevel: Record<string, any[]> = {}
-  ;(elements || []).forEach((el: any) => {
+  ;(levelElements || []).forEach((el: any) => {
     if (!elementsByLevel[el.level_id]) elementsByLevel[el.level_id] = []
     elementsByLevel[el.level_id].push(el)
+  })
+
+  const elementsByAthlete: Record<string, any[]> = {}
+  ;(athleteElements || []).forEach((el: any) => {
+    if (!elementsByAthlete[el.athlete_id]) elementsByAthlete[el.athlete_id] = []
+    elementsByAthlete[el.athlete_id].push(el)
   })
 
   const progressByAthleteElement: Record<string, string> = {}
@@ -55,10 +65,10 @@ export async function getAthleteReadinessRows(teamIds?: string[]) {
   })
 
   return (athletes || []).map((a: any) => {
-    const levelElements = a.program_level_id ? elementsByLevel[a.program_level_id] || [] : []
-    const total = levelElements.length
-    const achieved = levelElements.filter((el: any) => progressByAthleteElement[`${a.id}:${el.id}`] === 'achieved').length
-    const almost = levelElements.filter((el: any) => progressByAthleteElement[`${a.id}:${el.id}`] === 'almost').length
+    const activeElements = elementsByAthlete[a.id]?.length ? elementsByAthlete[a.id] : (a.program_level_id ? elementsByLevel[a.program_level_id] || [] : [])
+    const total = activeElements.length
+    const achieved = activeElements.filter((el: any) => progressByAthleteElement[`${a.id}:${el.id}`] === 'achieved').length
+    const almost = activeElements.filter((el: any) => progressByAthleteElement[`${a.id}:${el.id}`] === 'almost').length
     const notAchieved = Math.max(total - achieved - almost, 0)
     const readiness = total ? Math.round((achieved / total) * 100) : 0
 
