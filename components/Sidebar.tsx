@@ -12,6 +12,7 @@ const adminLinks = [
   ['/coaches', 'Coaches'],
   ['/levels', 'Levels & Skills'],
   ['/fig-elite', 'FIG Elite Builder'],
+  ['/ai-judge', 'AI Judge'],
   ['/weekly-notes', 'Weekly Notes'],
   ['/reports', 'Reports'],
   ['/settings', 'Settings'],
@@ -23,6 +24,7 @@ const coachLinks = [
   ['/teams', 'My Teams'],
   ['/levels', 'Levels & Skills'],
   ['/fig-elite', 'FIG Elite Builder'],
+  ['/ai-judge', 'AI Judge'],
   ['/weekly-notes', 'Weekly Notes'],
   ['/reports', 'Reports'],
 ]

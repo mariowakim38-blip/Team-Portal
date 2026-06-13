@@ -1550,3 +1550,28 @@ tr:last-child td {
     flex-direction: column;
   }
 }
+
+/* AI USAG EXECUTION ASSISTANT */
+.ai-video {
+  width: 100%;
+  max-height: 360px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.45);
+  margin-top: 14px;
+}
+
+.ai-summary-box {
+  background: rgba(2, 6, 15, 0.54);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ai-summary-box span {
+  color: var(--muted);
+  font-weight: 700;
+}
